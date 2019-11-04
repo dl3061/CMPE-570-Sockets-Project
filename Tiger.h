@@ -24,5 +24,6 @@
 #define RES_KILLCIENT	RES_ENDCLIENT
 
 #define T_CLEARSCREEN	"\033[2J\033[H"
+#define T_SCROLLALOT	"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
 
 #endif

@@ -14,6 +14,7 @@
 #include <netinet/in.h> 
 
 #include "Tiger.h"
+#include "TParam.h"
 
 int MainProgramLoop(int a_file_descriptor);
 
@@ -47,12 +48,14 @@ int MainProgramLoop(int server_file_descriptor)
 	char read_buffer[BUFFER_SIZE];
 	char send_buffer[BUFFER_SIZE];
 	char input_buffer[BUFFER_SIZE];
+	char err_msg[BUFFER_SIZE];
 
 	// Variables
 	int connected_to_server = 0;	// default 0, -1 failed to connect, 1 connected
 	int user_authorized = 0;		// default 0, 1 authorized.
 	char server_ip[BUFFER_SIZE];
 	char username[BUFFER_SIZE];
+	char password[BUFFER_SIZE];
 	int send_send_buffer;
 
 	while (keep_program_alive)
@@ -84,7 +87,12 @@ int MainProgramLoop(int server_file_descriptor)
 		printf("\t%s <File Name>\n", CMD_TGET);
 		printf("\t%s <File Name>\n", CMD_TPUT);
 		printf("\t%s\n", CMD_END);
-		printf("\n\n");
+		printf("\n");
+		
+		// Print status (if any)
+		printf("%s\n", err_msg);
+		printf("\n");
+		memset(err_msg, 0, BUFFER_SIZE);
 
 		// Get user input
 		memset(input_buffer, 0, BUFFER_SIZE);
@@ -93,31 +101,41 @@ int MainProgramLoop(int server_file_descriptor)
 			printf("Received user cmd: %s\n", input_buffer);
 
 		// Parse user input
+
+		// TCONNECT
 		if (strstr(input_buffer, CMD_TCONNECT))
 		{
 			// tconnect
 			if (verbose)
 				printf("Got a tconnect command!\n");
 
-			// Address(?)
-			struct sockaddr_in serv_addr;
-			serv_addr.sin_family = AF_INET;
-			serv_addr.sin_port = htons(PORT);
+			// Get the IP, username and password
+			char* tconnect_token = GetParam(input_buffer, 0, " ");
+			char* ip_token = GetParam(input_buffer, 1, " ");
+			char* username_token = GetParam(input_buffer, 2, " ");
+			char* password_token = GetParam(input_buffer, 3, " ");
 
-			// Convert IPv4 and IPv6 addresses from text to binary form 
-			if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
+			if (tconnect_token == NULL || ip_token == NULL || username_token == NULL || password_token == NULL)
 			{
-				fprintf(stderr, "Error at line %d: Invalid address %s. Address not supported. \n",
-					__LINE__, server_ip);
-
-				// Set failure flag
-				connected_to_server = (-1);
+				// Invalid command
+				sprintf(err_msg, "Invalid params. Expected: tconnect <TigerS IP Address> <User> <Password>");
 			}
 			else
 			{
-				if (connect(server_file_descriptor, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+				// Save params in their respective variables
+				sprintf(server_ip, "%s", ip_token);
+				sprintf(username, "%s", username_token);
+				sprintf(password, "%s", password_token);
+
+				// Address(?)
+				struct sockaddr_in serv_addr;
+				serv_addr.sin_family = AF_INET;
+				serv_addr.sin_port = htons(PORT);
+
+				// Convert IPv4 and IPv6 addresses from text to binary form 
+				if (inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0)
 				{
-					fprintf(stderr, "Error at line %d: Connection to IP %s failed.\n",
+					fprintf(stderr, "Error at line %d: Invalid address %s. Address not supported. \n",
 						__LINE__, server_ip);
 
 					// Set failure flag
@@ -125,12 +143,23 @@ int MainProgramLoop(int server_file_descriptor)
 				}
 				else
 				{
-					// Successfully connected
-					connected_to_server = 1;
+					if (connect(server_file_descriptor, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+					{
+						fprintf(stderr, "Error at line %d: Connection to IP %s failed.\n",
+							__LINE__, server_ip);
+
+						// Set failure flag
+						connected_to_server = (-1);
+					}
+					else
+					{
+						// Successfully connected
+						connected_to_server = 1;
+					}
 				}
 			}
-
 		}
+		// TGET
 		else if (strstr(input_buffer, CMD_TGET))
 		{
 			if (verbose)
