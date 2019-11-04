@@ -1,3 +1,9 @@
+/*
+	TigerC.c
+	David Lin (dl3061@rit.edu)
+*/
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,8 +32,11 @@ int main()
 		return -1;
 	}
 
+	// Set verbose to true for debugging
 	verbose = 1;
-	MainProgramLoop();
+
+	// Main
+	MainProgramLoop(socket_fd);
 }
 
 
@@ -106,7 +115,7 @@ int MainProgramLoop(int server_file_descriptor)
 			}
 			else
 			{
-				if (connect(socket_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+				if (connect(server_file_descriptor, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
 				{
 					fprintf(stderr, "Error at line %d: Connection to IP %s failed.\n",
 						__LINE__, server_ip);
@@ -116,7 +125,8 @@ int MainProgramLoop(int server_file_descriptor)
 				}
 				else
 				{
-
+					// Successfully connected
+					connected_to_server = 1;
 				}
 			}
 
@@ -154,32 +164,35 @@ int MainProgramLoop(int server_file_descriptor)
 		}
 
 
-
-		// Send outgoing command
-		sprintf(send_buffer, "%s", input_buffer);
-		send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
-
-		// Read response data and save it to the buffer
-		memset(read_buffer, 0, BUFFER_SIZE);
-		if (read(server_file_descriptor, read_buffer, BUFFER_SIZE))
+		// Send outgoing command and read the response if applicable
+		if (send_send_buffer)
 		{
-			// Print the data in
-			if (verbose)
-				printf("Received from server: %s \n", read_buffer);
+			// Send the outgoing command from send_buffer
+			sprintf(send_buffer, "%s", input_buffer);
+			send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
 
-			if (strstr(read_buffer, RES_AUTH))
+			// Read response data and save it to the buffer
+			memset(read_buffer, 0, BUFFER_SIZE);
+			if (read(server_file_descriptor, read_buffer, BUFFER_SIZE))
 			{
-				user_authorized = 1;
-			}
-			else if (strstr(read_buffer, RES_ENDCLIENT) || strstr(read_buffer, RES_KILLCIENT))
-			{
-				user_authorized = 0;
-				keep_program_alive = 0;
+				// Print the data in
+				if (verbose)
+					printf("Received from server: %s \n", read_buffer);
+
+				if (strstr(read_buffer, RES_AUTH))
+				{
+					user_authorized = 1;
+				}
+				else if (strstr(read_buffer, RES_ENDCLIENT) || strstr(read_buffer, RES_KILLCIENT))
+				{
+					user_authorized = 0;
+					keep_program_alive = 0;
+				}
 			}
 		}
 	}
 
-	// Send outgoing command
+	// Send outgoing command to end the program
 	sprintf(send_buffer, "Testing: %s", CMD_END);
 	send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
 

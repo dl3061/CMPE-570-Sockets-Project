@@ -1,3 +1,8 @@
+/*
+	TigerS.c
+	David Lin (dl3061@rit.edu)
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +59,7 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
+	// Apply highly advanced scientific technology to accept incoming sockets and open a new thread for each
 	int keep_server_alive = 1;
 	while (keep_server_alive)
 	{

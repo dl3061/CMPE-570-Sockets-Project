@@ -1,3 +1,8 @@
+/*
+	Tiger.h
+	David Lin (dl3061@rit.edu)
+*/
+
 #ifndef TIGER_H
 #define TIGER_H
 
