@@ -9,9 +9,12 @@ COMPILE_LINK = gcc -std=c99 -O$(OPT) -Wall -pedantic -g $(LINK_FLAGS) -o $@ $^
 VALGRIND_ECHO = @echo "Testing $^ with valgrind memory command"
 VALGRIND = valgrind --tool=memcheck --leak-check=full --show-reachable=yes --track-origins=yes
 
-SHARED_HEADERS = 
+SHARED_HEADERS = TParam.h Tiger.h
 LINK_FLAGS = -lm -lgsl -lgslcblas
 D_FLAGS = 
+
+SERVER_OUT_FILE = err_server.txt
+CLIENT_OUT_FILE = err_client.txt
 
 .PHONY: help
 help:
@@ -29,15 +32,22 @@ clean :
 	-rm -f *.exe
 	$(NEXT_LINE)
 
-.PHONY: test
-test: TigerC.exe TigerS.exe
+.PHONY: server
+server: TigerC.exe TigerS.exe
+	$(NEXT_LINE) >> $(SERVER_OUT_FILE)
+	./TigerS.exe 2> $(SERVER_OUT_FILE)
+
+.PHONY: client
+client: TigerC.exe TigerS.exe
+	$(NEXT_LINE) >> $(CLIENT_OUT_FILE)
+	./TigerC.exe 2> $(CLIENT_OUT_FILE)
 	
-TigerC.exe : TigerC.o 
+TigerC.exe : TigerC.o TParam.o
 	$(COMPILE_LINK_ECHO)
 	$(COMPILE_LINK)
 	$(NEXT_LINE)
 
-TigerS.exe : TigerS.o 
+TigerS.exe : TigerS.o TParam.o
 	$(COMPILE_LINK_ECHO)
 	$(COMPILE_LINK)
 	$(NEXT_LINE)
@@ -48,6 +58,11 @@ TigerC.o : TigerC.c $(SHARED_HEADERS)
 	$(NEXT_LINE)
 
 TigerS.o : TigerS.c $(SHARED_HEADERS)
+	$(COMPILE_ECHO)
+	$(COMPILE_O)
+	$(NEXT_LINE)
+
+TParam.o : TParam.c $(SHARED_HEADERS)
 	$(COMPILE_ECHO)
 	$(COMPILE_O)
 	$(NEXT_LINE)
