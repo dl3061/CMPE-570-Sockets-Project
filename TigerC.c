@@ -43,7 +43,7 @@ int main()
 
 int MainProgramLoop(int server_file_descriptor)
 {
-	// Server reads first, then sends
+	// Client sends first, then reads
 	int keep_program_alive = 1;
 	char read_buffer[BUFFER_SIZE];
 	char send_buffer[BUFFER_SIZE];
