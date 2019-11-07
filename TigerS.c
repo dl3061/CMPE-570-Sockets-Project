@@ -12,10 +12,13 @@
 #include <netinet/in.h> 
 
 #include "Tiger.h"
+#include "TParam.h"
 
 // Prototypes for private functions
 int MainProgramLoop(int client_file_descriptor);
-int HandleSocketConnection(int file_descriptor);
+int VerifyUser(char* username, char* password);
+
+int ReceiveFile(int client_file_descriptor, char* filename, int filesize);
 
 int main()
 {
@@ -91,8 +94,18 @@ int MainProgramLoop(int client_file_descriptor)
 	char read_buffer[BUFFER_SIZE];
 	char send_buffer[BUFFER_SIZE];
 
+	char receive_filename[BUFFER_SIZE];
+	int receive_filesize;
+	char send_filename[BUFFER_SIZE];
+
+	// Variables
+	int user_is_authorized = 0;
+
 	while (keep_program_alive)
 	{
+		int receive_file = 0;
+		int sending_file = 0;
+
 		// Read incoming command and save it to the buffer
 		memset(read_buffer, 0, BUFFER_SIZE);
 		if (read(client_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
@@ -102,67 +115,167 @@ int MainProgramLoop(int client_file_descriptor)
 		else
 		{
 			// Find corresponding command
+			printf("Recieved from client: %s \n", read_buffer);
+
+			// TCONNECT - can run if user is unauthorized
 			if (strstr(read_buffer, CMD_TCONNECT))
 			{
 				printf("Got a tconnect command!\n");
 
-				sprintf(send_buffer, RES_AUTH);
-			}
-			else if (strstr(read_buffer, CMD_TGET))
-			{
-				printf("Got a tget command!\n");
-			}
-			else if (strstr(read_buffer, CMD_TPUT))
-			{
-				printf("Got a tput command!\n");
-			}
-			else if (strstr(read_buffer, CMD_END))
-			{
-				printf("Got an end command!\n");
+				// Check username and password
+				char* username_token = GetParam(read_buffer, 1, " \n");
+				char* password_token = GetParam(read_buffer, 2, " \n");
 
-				keep_program_alive = 0;
-				sprintf(send_buffer, RES_ENDCLIENT);
+				printf("Username: %s\tPassword: %s\n", username_token, password_token);
+
+				if (VerifyUser(username_token, password_token))
+				{
+					// Success -> return auth okay
+					user_is_authorized = 1;
+					sprintf(send_buffer, RES_AUTH);
+				}
+				else
+				{
+					// Failed -> return cannot auth
+					sprintf(send_buffer, RES_AUTHFAILED);
+				}
 			}
-			else
+			else 
 			{
-				sprintf(send_buffer, "Hello from server!");
+				// Following cannot run if user is unauthorized
+				if (user_is_authorized)
+				{
+					// TGET
+					if (strstr(read_buffer, CMD_TGET))
+					{
+						printf("Got a tget command!\n");
+
+						char* file_token = GetParam(read_buffer, 1, " \n");
+						printf("Ready to send file: %s\n", file_token);
+						sprintf(send_filename, "%s", file_token);
+
+						sending_file = 1;
+						sprintf(send_buffer, RES_READY_TO_SEND);
+					}
+					// TPUT
+					else if (strstr(read_buffer, CMD_TPUT))
+					{
+						printf("Got a tput command!\n");
+
+						char* file_token = GetParam(read_buffer, 1, " \n");
+						sprintf(receive_filename, "%s", file_token);
+
+						char* size_token = GetParam(read_buffer, 2, " \n");
+						int i = 0;
+						receive_filesize = 0;
+						while (size_token[i])
+						{
+							receive_filesize = receive_filesize * 10 + size_token[i] - '0';
+							i++;
+						}
+
+						// printf("Ready to download file: %s (size: %d)\n", receive_filename);
+
+						receive_file = 1;
+						sprintf(send_buffer, RES_READY_TO_RECEIVE);
+					}
+					// TEND
+					else if (strstr(read_buffer, CMD_END))
+					{
+						printf("Got an end command!\n");
+
+						keep_program_alive = 0;
+						sprintf(send_buffer, RES_ENDCLIENT);
+					}
+					else
+					{
+						sprintf(send_buffer, RES_UNKNOWN);
+					}
+				}
+				else
+				{
+					sprintf(send_buffer, RES_UNAUTH);
+				}
 			}
 		}
 
 		// Send response status 
 		send(client_file_descriptor, send_buffer, strlen(send_buffer), 0);
+
+		// Temporarily interrupt loop to send/receive files
+		if (receive_file)
+			ReceiveFile(client_file_descriptor, receive_filename, receive_filesize);
 	}
 	return 0;
 }
 
-int HandleSocketConnection(int client_file_descriptor)
+
+int VerifyUser(char* username, char* password)
 {
-	char buffer[BUFFER_SIZE] = { 0 };
+	int user_verified = 0;
+	printf("Checking credentials for %s and %s.\n", username, password);
 
-	// Try to read the stream from the client
-	if (read(client_file_descriptor, buffer, BUFFER_SIZE) < 0)
+	// Hardcode
+	user_verified = 1;
+
+	if (user_verified)
 	{
-		fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
-		return (-1);
+		printf("User %s verified! Signing in.\n", username);
 	}
+	return user_verified;
+}
 
-	// Print the data in
-	printf("%s\n", buffer);
+int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
+{
+	int retVal = 0;
+
+	// Response (success or fail)
+	char send_buffer[BUFFER_SIZE];
+
+	// File 
+	char filepath[BUFFER_SIZE];
+	sprintf(filepath, "%s%s", SERVER_FILE_DIR, filename);
+	FILE* file = fopen(filepath, "w");
 	
-	// Send response
-	char *hello = "Hello from server!\n";
-	send(client_file_descriptor, hello, strlen(hello), 0);
-
-	// Try to read the stream from the client
-	if (read(client_file_descriptor, buffer, BUFFER_SIZE) < 0)
+	printf("Receiving file of size %d and saving as: %s\n", filesize, filepath);
+	
+	// Store the incoming contents in a buffer
+	char* file_buffer = malloc(filesize + 1);
+	if (file_buffer)
 	{
-		fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
-		return (-1);
+		if (read(client_file_descriptor, file_buffer, filesize + 1))
+		{
+			fprintf(file, "%s", file_buffer);
+			fclose(file);
+
+			sprintf(send_buffer, "%s", RES_RECEIVE_SUCCESS);
+			retVal = 1;
+
+			// Send the response
+			send(client_file_descriptor, send_buffer, strlen(send_buffer), 0);
+		}
+		else
+		{
+			fprintf(stderr, "Error at line %d: failed to receice data.\n", __LINE__);
+
+			sprintf(send_buffer, "%s", RES_RECEIVE_FAILURE);
+			retVal = -1;
+
+			// Send the response
+			send(client_file_descriptor, send_buffer, strlen(send_buffer), 0);
+		}
 	}
-	printf("%s\n", buffer);
+	else
+	{
+		fprintf(stderr, "Error at line %d: failed to malloc.\n", __LINE__);
+	}
 
-	// Send response
-	send(client_file_descriptor, hello, strlen(hello), 0);
+	// Cleanup
+	if (file_buffer)
+	{
+		free(file_buffer);
+		file_buffer = NULL;
+	}
 
-	return (1);
+	return retVal;
 }

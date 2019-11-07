@@ -17,6 +17,8 @@
 #include "TParam.h"
 
 int MainProgramLoop(int a_file_descriptor);
+int CheckIfFileExists(char* filename);
+int SendFile(int a_file_descripttor, FILE* file, int filesize);
 
 int verbose = 0;
 
@@ -53,9 +55,15 @@ int MainProgramLoop(int server_file_descriptor)
 	// Variables
 	int connected_to_server = 0;	// default 0, -1 failed to connect, 1 connected
 	int user_authorized = 0;		// default 0, 1 authorized.
+	
 	char server_ip[BUFFER_SIZE];
 	char username[BUFFER_SIZE];
 	char password[BUFFER_SIZE];
+
+	char tsend_filename[BUFFER_SIZE];
+	FILE* tsend_file;
+	int tsend_filesize;
+
 	int send_send_buffer;
 
 	while (keep_program_alive)
@@ -68,18 +76,18 @@ int MainProgramLoop(int server_file_descriptor)
 		printf(T_CLEARSCREEN);
 		
 		// Connection status
-		if (connected_to_server == 0)
-			printf("Not connected to server.\n");
-		else if (connected_to_server == (-1))
+		if (connected_to_server == (-1))
 			printf("Failed to connect to TigerS at %s.\n", server_ip);
+		else if (connected_to_server == (1))
+			printf("Connected to TigerS at %s.\n", server_ip);
 		else
-			printf("Failed to connect to TigerS at %s.\n", server_ip);
+			printf("Not connected to server.\n");
 
 		// Login / authorization status
 		if (!user_authorized)
-			printf("\tCurrently not signed in.\n");
+			printf("Currently not signed in.\n");
 		else
-			printf("\tSigned in as %s!\n", username);
+			printf("Signed in as %s!\n", username);
 
 		// Print commands
 		printf("Supported commands:\n");
@@ -102,20 +110,19 @@ int MainProgramLoop(int server_file_descriptor)
 
 		// Parse user input
 
-		// TCONNECT
-		if (strstr(input_buffer, CMD_TCONNECT))
+		// TCONNECTr
+		if (strstr(input_buffer, CMD_TCONNECT) == input_buffer)
 		{
 			// tconnect
 			if (verbose)
 				printf("Got a tconnect command!\n");
 
 			// Get the IP, username and password
-			char* tconnect_token = GetParam(input_buffer, 0, " ");
-			char* ip_token = GetParam(input_buffer, 1, " ");
-			char* username_token = GetParam(input_buffer, 2, " ");
-			char* password_token = GetParam(input_buffer, 3, " ");
+			char* ip_token = GetParam(input_buffer, 1, " \n");
+			char* username_token = GetParam(input_buffer, 2, " \n");
+			char* password_token = GetParam(input_buffer, 3, " \n");
 
-			if (tconnect_token == NULL || ip_token == NULL || username_token == NULL || password_token == NULL)
+			if (ip_token == NULL || username_token == NULL || password_token == NULL)
 			{
 				// Invalid command
 				sprintf(err_msg, "Invalid params. Expected: tconnect <TigerS IP Address> <User> <Password>");
@@ -155,49 +162,98 @@ int MainProgramLoop(int server_file_descriptor)
 					{
 						// Successfully connected
 						connected_to_server = 1;
+
+						// Log in
+						sprintf(send_buffer, "%s %s %s", CMD_TCONNECT, username, password);
+						send_send_buffer = 1;
 					}
 				}
 			}
 		}
+		
 		// TGET
 		else if (strstr(input_buffer, CMD_TGET))
 		{
 			if (verbose)
 				printf("Got a tget command!\n");
 
-			//@todo 
+			char* filename = GetParam(input_buffer, 1, " \n");
+			if (filename == NULL)
+			{
+				// Invalid command 
+				sprintf(err_msg, "Invalid param. Expected: tget <File Name>");
+			}
+			else
+			{
+				// Send the request to download the file
+				sprintf(send_buffer, "%s %s", CMD_TGET, filename);
 
-			send_send_buffer = 1;
+				send_send_buffer = 1;
+			}
 		}
+		
+		// TPUT
 		else if (strstr(input_buffer, CMD_TPUT))
 		{
 			if (verbose)
 				printf("Got a tput command!\n");
 
-			//@todo 
+			char* filename = GetParam(input_buffer, 1, " \n");
+			if (filename == NULL)
+			{
+				// Invalid command 
+				sprintf(err_msg, "Invalid param. Expected: tget <File Name>");
+			}
+			else
+			{
+				// Save the filename for when we get the okay-to-send response
+				sprintf(tsend_filename, "%s", filename);
 
-			send_send_buffer = 1;
+				// Verify if the file exists
+				if (CheckIfFileExists(tsend_filename))
+				{
+					// Open it
+					tsend_file = fopen(tsend_filename, "r");
+
+					// Get the filesize
+					fseek(tsend_file, 0L, SEEK_END);
+					tsend_filesize = ftell(tsend_file);
+					fseek(tsend_file, 0L, SEEK_SET);
+
+					// Send the request to download the file
+					sprintf(send_buffer, "%s %s %d", CMD_TPUT, tsend_filename, tsend_filesize);
+
+					send_send_buffer = 1;
+				}
+				else
+				{
+					sprintf(err_msg, "Cannot find/read file %s.", tsend_filename);
+				}
+			}
 		}
 		else if (strstr(input_buffer, CMD_END))
 		{
 			if (verbose)
 				printf("Got an end command!\n");
 
-			//@todo 
+			sprintf(send_buffer, "%s", CMD_END);
+
+			if ((connected_to_server == 0) || (user_authorized == 0))
+				keep_program_alive = 0;
 
 			send_send_buffer = 1;
 		}
 		else
 		{
-			printf("Unrecognized input.");
+			printf("Unrecognized input %s.\n", input_buffer);
+			sprintf(err_msg, "Unrecongized input: %s.", input_buffer);
 		}
 
 
 		// Send outgoing command and read the response if applicable
-		if (send_send_buffer)
+		if (send_send_buffer && (connected_to_server == 1))
 		{
 			// Send the outgoing command from send_buffer
-			sprintf(send_buffer, "%s", input_buffer);
 			send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
 
 			// Read response data and save it to the buffer
@@ -207,10 +263,27 @@ int MainProgramLoop(int server_file_descriptor)
 				// Print the data in
 				if (verbose)
 					printf("Received from server: %s \n", read_buffer);
+				fprintf(stderr, "Received from server: %s \n", read_buffer);
 
 				if (strstr(read_buffer, RES_AUTH))
 				{
 					user_authorized = 1;
+					sprintf(err_msg, "SERVER: Successfully signed in to TigerS!");
+				}
+				else if (strstr(read_buffer, RES_AUTHFAILED))
+				{
+					user_authorized = 0;
+					sprintf(err_msg, "SERVER: Could not sign in to TigerS. Failed to authorize user.");
+				}
+				else if (strstr(read_buffer, RES_UNAUTH))
+				{
+					sprintf(err_msg, "SERVER: User is not authorized. Please re-run tconnect and with valid credentials.");
+				}
+				else if (strstr(read_buffer, RES_READY_TO_RECEIVE))
+				{
+					sprintf(err_msg, "SERVER: Ready to receive.");
+
+					// Interrupt loop to transfer data
 				}
 				else if (strstr(read_buffer, RES_ENDCLIENT) || strstr(read_buffer, RES_KILLCIENT))
 				{
@@ -221,9 +294,71 @@ int MainProgramLoop(int server_file_descriptor)
 		}
 	}
 
-	// Send outgoing command to end the program
-	sprintf(send_buffer, "Testing: %s", CMD_END);
-	send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
-
 	return 0;
 }
+
+
+/*
+	Checks if a file exists (and if it has read permission)
+*/
+int CheckIfFileExists(char* filename)
+{
+	if (access(filename, R_OK) != -1) 
+	{
+		return 1;
+	}
+	else 
+	{
+		return 0;
+	}
+}
+
+
+/*
+	
+*/
+int SendFile(int a_file_descripttor, FILE* file, int filesize)
+{
+	int retVal = 0;
+
+	// Store the file in a buffer
+	char* file_buffer = malloc(filesize+1);
+	if (file_buffer == NULL)
+	{
+		fprintf(stderr, "Error at line %d: failed to malloc.\n", __LINE__);
+	}
+	else
+	{
+		// Copy the contents into a buffer
+		fread(file_buffer, sizeof(char), filesize, file);
+
+		// Send it over
+		send(a_file_descripttor, file_buffer, strlen(file_buffer), 0);
+		
+		// Read response
+		char read_buffer[BUFFER_SIZE];
+		if (read(a_file_descripttor, read_buffer, BUFFER_SIZE))
+		{
+			if (strstr(read_buffer, RES_RECEIVE_SUCCESS))
+			{
+				retVal = 1;
+			}
+			else
+			{
+				fprintf(stderr, "SERVER: %s", read_buffer);
+				retVal = -1;
+			}
+		}
+	}
+
+	// Cleanup
+	if (file_buffer)
+	{
+		free(file_buffer);
+		file_buffer = NULL;
+	}
+
+	return retVal;
+}
+
+

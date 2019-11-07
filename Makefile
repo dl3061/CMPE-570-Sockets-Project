@@ -30,6 +30,8 @@ clean :
 	@echo "Cleaning up temporary files."
 	-rm -f *.o
 	-rm -f *.exe
+	-rm -f $(SERVER_OUT_FILE)
+	-rm -f $(CLIENT_OUT_FILE)
 	$(NEXT_LINE)
 
 .PHONY: server
