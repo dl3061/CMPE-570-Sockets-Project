@@ -18,7 +18,7 @@
 
 int MainProgramLoop(int a_file_descriptor);
 int CheckIfFileExists(char* filename);
-int SendFile(int a_file_descripttor, FILE* file, int filesize);
+int SendFile(int a_file_descripttor, char* filepath, int filesize);
 
 int verbose = 0;
 
@@ -61,8 +61,7 @@ int MainProgramLoop(int server_file_descriptor)
 	char password[BUFFER_SIZE];
 
 	char tsend_filename[BUFFER_SIZE];
-	FILE* tsend_file;
-	int tsend_filesize;
+	int tsend_filesize = 0;
 
 	int send_send_buffer;
 
@@ -212,13 +211,12 @@ int MainProgramLoop(int server_file_descriptor)
 				// Verify if the file exists
 				if (CheckIfFileExists(tsend_filename))
 				{
-					// Open it
-					tsend_file = fopen(tsend_filename, "r");
-
 					// Get the filesize
+					FILE* tsend_file = fopen(tsend_filename, "rb");
 					fseek(tsend_file, 0L, SEEK_END);
 					tsend_filesize = ftell(tsend_file);
 					fseek(tsend_file, 0L, SEEK_SET);
+					fclose(tsend_file);
 
 					// Send the request to download the file
 					sprintf(send_buffer, "%s %s %d", CMD_TPUT, tsend_filename, tsend_filesize);
@@ -284,6 +282,12 @@ int MainProgramLoop(int server_file_descriptor)
 					sprintf(err_msg, "SERVER: Ready to receive.");
 
 					// Interrupt loop to transfer data
+					int success = SendFile(server_file_descriptor, tsend_filename, tsend_filesize);
+
+					if (success == 1)
+						sprintf(err_msg, "SERVER: Successfully transferred file.");
+					else
+						sprintf(err_msg, "SERVER: An error has occured while trying to transfer the file.");
 				}
 				else if (strstr(read_buffer, RES_ENDCLIENT) || strstr(read_buffer, RES_KILLCIENT))
 				{
@@ -317,12 +321,14 @@ int CheckIfFileExists(char* filename)
 /*
 	
 */
-int SendFile(int a_file_descripttor, FILE* file, int filesize)
+int SendFile(int a_file_descripttor, char* filepath, int filesize)
 {
 	int retVal = 0;
+	FILE* file = fopen(filepath, "rb");
 
 	// Store the file in a buffer
 	char* file_buffer = malloc(filesize+1);
+	memset(file_buffer, 0, filesize + 1);
 	if (file_buffer == NULL)
 	{
 		fprintf(stderr, "Error at line %d: failed to malloc.\n", __LINE__);
@@ -331,6 +337,12 @@ int SendFile(int a_file_descripttor, FILE* file, int filesize)
 	{
 		// Copy the contents into a buffer
 		fread(file_buffer, sizeof(char), filesize, file);
+
+		for (int i = 0; i < filesize; i++)
+		{
+			fprintf(stderr, "%u", file_buffer[i]);
+		}
+		fprintf(stderr, "\n\n");
 
 		// Send it over
 		send(a_file_descripttor, file_buffer, strlen(file_buffer), 0);
@@ -357,6 +369,8 @@ int SendFile(int a_file_descripttor, FILE* file, int filesize)
 		free(file_buffer);
 		file_buffer = NULL;
 	}
+
+	fclose(file);
 
 	return retVal;
 }

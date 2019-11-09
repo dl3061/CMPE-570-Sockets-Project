@@ -9,6 +9,8 @@
 #include <math.h>
 #include <unistd.h> 
 #include <sys/socket.h> 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <netinet/in.h> 
 
 #include "Tiger.h"
@@ -174,8 +176,7 @@ int MainProgramLoop(int client_file_descriptor)
 							i++;
 						}
 
-						// printf("Ready to download file: %s (size: %d)\n", receive_filename);
-
+						
 						receive_file = 1;
 						sprintf(send_buffer, RES_READY_TO_RECEIVE);
 					}
@@ -216,7 +217,10 @@ int VerifyUser(char* username, char* password)
 	printf("Checking credentials for %s and %s.\n", username, password);
 
 	// Hardcode
-	user_verified = 1;
+	if (strstr(username, "user") && strstr(password, "pass"))
+	{
+		user_verified = 1;
+	}
 
 	if (user_verified)
 	{
@@ -235,18 +239,22 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 	// File 
 	char filepath[BUFFER_SIZE];
 	sprintf(filepath, "%s%s", SERVER_FILE_DIR, filename);
-	FILE* file = fopen(filepath, "w");
+	FILE* file = fopen(filepath, "wb");
 	
 	printf("Receiving file of size %d and saving as: %s\n", filesize, filepath);
 	
 	// Store the incoming contents in a buffer
 	char* file_buffer = malloc(filesize + 1);
+	memset(file_buffer, 0, filesize + 1);
 	if (file_buffer)
 	{
 		if (read(client_file_descriptor, file_buffer, filesize + 1))
 		{
-			fprintf(file, "%s", file_buffer);
+			file_buffer[filesize] = 0;
+			fwrite(file_buffer, sizeof(char), filesize, file);
 			fclose(file);
+
+			printf("Success! File %s saved to %s!\n", filename, filepath);
 
 			sprintf(send_buffer, "%s", RES_RECEIVE_SUCCESS);
 			retVal = 1;

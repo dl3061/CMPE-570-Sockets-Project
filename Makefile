@@ -15,6 +15,7 @@ D_FLAGS =
 
 SERVER_OUT_FILE = err_server.txt
 CLIENT_OUT_FILE = err_client.txt
+FILES_DIRECTORY = files
 
 .PHONY: help
 help:
@@ -32,6 +33,7 @@ clean :
 	-rm -f *.exe
 	-rm -f $(SERVER_OUT_FILE)
 	-rm -f $(CLIENT_OUT_FILE)
+	-rm -f $(FILES_DIRECTORY)/*
 	$(NEXT_LINE)
 
 .PHONY: server

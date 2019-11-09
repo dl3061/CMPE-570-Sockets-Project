@@ -50,5 +50,5 @@
 
 
 // Server file directory
-#define SERVER_FILE_DIR		"\\files\\"
+#define SERVER_FILE_DIR		"files/"
 #endif
