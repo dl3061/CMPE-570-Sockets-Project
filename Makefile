@@ -9,7 +9,7 @@ COMPILE_LINK = gcc -std=c99 -O$(OPT) -Wall -pedantic -g $(LINK_FLAGS) -o $@ $^
 VALGRIND_ECHO = @echo "Testing $^ with valgrind memory command"
 VALGRIND = valgrind --tool=memcheck --leak-check=full --show-reachable=yes --track-origins=yes
 
-SHARED_HEADERS = TParam.h Tiger.h
+SHARED_HEADERS = TParam.h Tiger.h THelp.h
 LINK_FLAGS = -lm -lgsl -lgslcblas
 D_FLAGS = 
 
@@ -46,12 +46,12 @@ client: TigerC.exe TigerS.exe
 	$(NEXT_LINE) >> $(CLIENT_OUT_FILE)
 	./TigerC.exe 2> $(CLIENT_OUT_FILE)
 	
-TigerC.exe : TigerC.o TParam.o
+TigerC.exe : TigerC.o TParam.o THelp.o
 	$(COMPILE_LINK_ECHO)
 	$(COMPILE_LINK)
 	$(NEXT_LINE)
 
-TigerS.exe : TigerS.o TParam.o
+TigerS.exe : TigerS.o TParam.o THelp.o
 	$(COMPILE_LINK_ECHO)
 	$(COMPILE_LINK)
 	$(NEXT_LINE)
@@ -67,6 +67,11 @@ TigerS.o : TigerS.c $(SHARED_HEADERS)
 	$(NEXT_LINE)
 
 TParam.o : TParam.c $(SHARED_HEADERS)
+	$(COMPILE_ECHO)
+	$(COMPILE_O)
+	$(NEXT_LINE)
+
+THelp.o : THelp.c $(SHARED_HEADERS)
 	$(COMPILE_ECHO)
 	$(COMPILE_O)
 	$(NEXT_LINE)

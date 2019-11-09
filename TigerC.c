@@ -15,10 +15,12 @@
 
 #include "Tiger.h"
 #include "TParam.h"
+#include "THelp.h"
 
+// Prototypes for private functions
 int MainProgramLoop(int a_file_descriptor);
-int CheckIfFileExists(char* filename);
-int SendFile(int a_file_descripttor, char* filepath, int filesize);
+int SendFile(int server_file_descriptor, char* filepath, int filesize);
+int ReceiveFile(int server_file_descriptor, char* filename, int filesize);
 
 int verbose = 0;
 
@@ -53,17 +55,20 @@ int MainProgramLoop(int server_file_descriptor)
 	char err_msg[BUFFER_SIZE];
 
 	// Variables
+	int send_send_buffer;			// Send socket message this iteration?
 	int connected_to_server = 0;	// default 0, -1 failed to connect, 1 connected
 	int user_authorized = 0;		// default 0, 1 authorized.
 	
+	// User Auth
 	char server_ip[BUFFER_SIZE];
 	char username[BUFFER_SIZE];
 	char password[BUFFER_SIZE];
 
+	// File IO
 	char tsend_filename[BUFFER_SIZE];
 	int tsend_filesize = 0;
-
-	int send_send_buffer;
+	char treceive_filename[BUFFER_SIZE];
+	int treceive_filesize = 0;
 
 	while (keep_program_alive)
 	{
@@ -109,7 +114,7 @@ int MainProgramLoop(int server_file_descriptor)
 
 		// Parse user input
 
-		// TCONNECTr
+		// TCONNECT
 		if (strstr(input_buffer, CMD_TCONNECT) == input_buffer)
 		{
 			// tconnect
@@ -184,6 +189,9 @@ int MainProgramLoop(int server_file_descriptor)
 			}
 			else
 			{
+				// Save the filename for when we get the okay-to-send response
+				sprintf(treceive_filename, "%s", filename);
+
 				// Send the request to download the file
 				sprintf(send_buffer, "%s %s", CMD_TGET, filename);
 
@@ -212,11 +220,7 @@ int MainProgramLoop(int server_file_descriptor)
 				if (CheckIfFileExists(tsend_filename))
 				{
 					// Get the filesize
-					FILE* tsend_file = fopen(tsend_filename, "rb");
-					fseek(tsend_file, 0L, SEEK_END);
-					tsend_filesize = ftell(tsend_file);
-					fseek(tsend_file, 0L, SEEK_SET);
-					fclose(tsend_file);
+					tsend_filesize = GetFilesize(tsend_filename);
 
 					// Send the request to download the file
 					sprintf(send_buffer, "%s %s %d", CMD_TPUT, tsend_filename, tsend_filesize);
@@ -236,9 +240,7 @@ int MainProgramLoop(int server_file_descriptor)
 
 			sprintf(send_buffer, "%s", CMD_END);
 
-			if ((connected_to_server == 0) || (user_authorized == 0))
-				keep_program_alive = 0;
-
+			keep_program_alive = 0;
 			send_send_buffer = 1;
 		}
 		else
@@ -265,20 +267,26 @@ int MainProgramLoop(int server_file_descriptor)
 
 				if (strstr(read_buffer, RES_AUTH))
 				{
-					user_authorized = 1;
+					// The server responds that our login attempt was a success.
 					sprintf(err_msg, "SERVER: Successfully signed in to TigerS!");
+
+					user_authorized = 1;
 				}
 				else if (strstr(read_buffer, RES_AUTHFAILED))
 				{
-					user_authorized = 0;
+					// The server responds that our login attempt was a failre.
 					sprintf(err_msg, "SERVER: Could not sign in to TigerS. Failed to authorize user.");
+
+					user_authorized = 0;
 				}
 				else if (strstr(read_buffer, RES_UNAUTH))
 				{
+					// The server cannot process our command because we have not logged in yet.
 					sprintf(err_msg, "SERVER: User is not authorized. Please re-run tconnect and with valid credentials.");
 				}
 				else if (strstr(read_buffer, RES_READY_TO_RECEIVE))
 				{
+					// The server is ready to receive our file. We have to send that file.
 					sprintf(err_msg, "SERVER: Ready to receive.");
 
 					// Interrupt loop to transfer data
@@ -288,6 +296,35 @@ int MainProgramLoop(int server_file_descriptor)
 						sprintf(err_msg, "SERVER: Successfully transferred file.");
 					else
 						sprintf(err_msg, "SERVER: An error has occured while trying to transfer the file.");
+				}
+				else if (strstr(read_buffer, RES_READY_TO_SEND))
+				{
+					// The server is ready to send a file. We have to acknolwedge and read that file.
+					sprintf(err_msg, "SERVER: Ready to send.");
+
+					// Get the filesize specified using highly advanced scientific technology
+					char* size_token = GetParam(read_buffer, 1, " \n");
+					int i = 0;
+					treceive_filesize = 0;
+					while (size_token[i])
+					{
+						treceive_filesize = treceive_filesize * 10 + size_token[i] - '0';
+						i++;
+					}
+
+					// Interrupt loop to receive data
+					int success = ReceiveFile(server_file_descriptor, treceive_filename, treceive_filesize);
+
+					if (success == 1)
+						sprintf(err_msg, "SERVER: Successfully received file.");
+					else
+						sprintf(err_msg, "SERVER: An error has occured while trying to transfer the file.");
+
+				}
+				else if (strstr(read_buffer, RES_CANNOTFINDFILE))
+				{
+					// The server cannot send a file because it could not be found.
+					sprintf(err_msg, "SERVER: cannot find file specified: %s", treceive_filename);
 				}
 				else if (strstr(read_buffer, RES_ENDCLIENT) || strstr(read_buffer, RES_KILLCIENT))
 				{
@@ -303,25 +340,10 @@ int MainProgramLoop(int server_file_descriptor)
 
 
 /*
-	Checks if a file exists (and if it has read permission)
+	Client used tput
+	Send a file specified by the user
 */
-int CheckIfFileExists(char* filename)
-{
-	if (access(filename, R_OK) != -1) 
-	{
-		return 1;
-	}
-	else 
-	{
-		return 0;
-	}
-}
-
-
-/*
-	
-*/
-int SendFile(int a_file_descripttor, char* filepath, int filesize)
+int SendFile(int server_file_descriptor, char* filepath, int filesize)
 {
 	int retVal = 0;
 	FILE* file = fopen(filepath, "rb");
@@ -329,7 +351,10 @@ int SendFile(int a_file_descripttor, char* filepath, int filesize)
 	// Store the file in a buffer
 	char* file_buffer = malloc(filesize+1);
 	memset(file_buffer, 0, filesize + 1);
-	if (file_buffer == NULL)
+
+	char send_buffer[BUFFER_SIZE];
+	
+	if (file_buffer == NULL || send_buffer == NULL) 
 	{
 		fprintf(stderr, "Error at line %d: failed to malloc.\n", __LINE__);
 	}
@@ -338,18 +363,56 @@ int SendFile(int a_file_descripttor, char* filepath, int filesize)
 		// Copy the contents into a buffer
 		fread(file_buffer, sizeof(char), filesize, file);
 
+#ifdef TEST_BINARY_READ
+		// Test the binary read
+		fprintf(stderr, "Reading binary: \n");
 		for (int i = 0; i < filesize; i++)
 		{
 			fprintf(stderr, "%u", file_buffer[i]);
 		}
 		fprintf(stderr, "\n\n");
+#endif
+
+		/*
+		// Unused because I though the error in my binary file was because it had nulls.
+		// Turned out it was just because the file was too large to send at once.
+		// Hacky thing to do -> "encrypt" so there are no zeroes
+		for (int i = 0; i < filesize; i++)
+		{
+			char val = file_buffer[i];
+
+			uint8_t val1 = (val & 0xF0) | 0x0F;
+			uint8_t val2 = (val & 0x0F) | 0xF0;
+			
+			send_buffer[2 * i] = val1;
+			send_buffer[2 * i + 1] = val2;
+		}
+
+		*/
+
+		// Send the data in groups of BUFFER_SIZE
+		for (int i = 0; i < (filesize / BUFFER_SIZE) + 1; i++)
+		{
+			memset(send_buffer, 0, BUFFER_SIZE);
+
+			// Send the next set of BUFFER_SIZE
+			for (int j = 0; j < BUFFER_SIZE; j++)
+			{
+				// Copy the data from the file buffer to the send buffer
+				if (i*BUFFER_SIZE + j < filesize)
+				{
+					send_buffer[j] = file_buffer[i*BUFFER_SIZE + j];
+				}
+			}
+			send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+		}
 
 		// Send it over
-		send(a_file_descripttor, file_buffer, strlen(file_buffer), 0);
+		// send(server_file_descriptor, (void *)send_buffer, 2* (filesize + 1), 0);
 		
 		// Read response
 		char read_buffer[BUFFER_SIZE];
-		if (read(a_file_descripttor, read_buffer, BUFFER_SIZE))
+		if (read(server_file_descriptor, read_buffer, BUFFER_SIZE))
 		{
 			if (strstr(read_buffer, RES_RECEIVE_SUCCESS))
 			{
@@ -376,3 +439,65 @@ int SendFile(int a_file_descripttor, char* filepath, int filesize)
 }
 
 
+/*
+	Client used tget
+	Receive a file
+*/
+int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
+{
+	int retVal = 0;
+
+	// Response (success or fail)
+	char send_buffer[BUFFER_SIZE];
+
+	// Determine the filepath 
+	char filepath[BUFFER_SIZE];
+	sprintf(filepath, "%s%s", SERVER_FILE_DIR, filename);
+	FILE* file = fopen(filepath, "wb");
+
+	printf("Receiving file of size %d and saving as: %s\n", filesize, filepath);
+
+	// Store the incoming contents in a buffer
+	char* file_buffer = malloc(filesize + 1);
+	memset(file_buffer, 0, filesize + 1);
+	if (file_buffer)
+	{
+		if (read(server_file_descriptor, file_buffer, filesize + 1))
+		{
+			file_buffer[filesize] = 0;
+			fwrite(file_buffer, sizeof(char), filesize, file);
+			fclose(file);
+
+			printf("Success! File %s saved to %s!\n", filename, filepath);
+
+			sprintf(send_buffer, "%s", RES_RECEIVE_SUCCESS);
+			retVal = 1;
+
+			// Send the response
+			send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
+		}
+		else
+		{
+			fprintf(stderr, "Error at line %d: failed to receice data.\n", __LINE__);
+
+			sprintf(send_buffer, "%s", RES_RECEIVE_FAILURE);
+			retVal = -1;
+
+			// Send the response
+			send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
+		}
+	}
+	else
+	{
+		fprintf(stderr, "Error at line %d: failed to malloc.\n", __LINE__);
+	}
+
+	// Cleanup
+	if (file_buffer)
+	{
+		free(file_buffer);
+		file_buffer = NULL;
+	}
+
+	return retVal;
+}

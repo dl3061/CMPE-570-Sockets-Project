@@ -6,18 +6,36 @@
 #ifndef TIGER_H
 #define TIGER_H
 
-#define PORT	(8080)
+// #define TEST_BINARY_READ
 
+#define PORT	(8080)
+#define BASE_SOCKET		(0)
 
 #define BUFFER_SIZE	(1024)
 
+/* COMMANDS */
+
+// User commands
 #define CMD_TCONNECT	"tconnect"
 #define CMD_TGET		"tget"
 #define	CMD_TPUT		"tput"
 //#define	CMD_END			"tend"
 #define CMD_END			"exit"		// From bash script
 
-#define BASE_SOCKET		(0)
+
+/* CLIENT REQUESTS */
+
+// Custom commands
+#define REQ_TCONNECT	CMD_TCONNECT
+#define REQ_TGET		CMD_TGET
+#define REQ_TPUT		CMD_TPUT
+#define REQ_END			CMD_END
+
+#define REQ_READY_TO_RECEIVE	"ready_receiving_tget"
+#define REQ_ABORT_RECEIVE		"not_ready_stop_that_plz"
+
+
+/* SERVER RESPONSES */
 
 // Unknown
 #define	RES_UNKNOWN		"unknown"
@@ -39,16 +57,24 @@
 #define RES_KILLCIENT	RES_ENDCLIENT
 
 // Ready to receive
-#define RES_READY_TO_RECEIVE	"ready_receiving_next"
+#define RES_READY_TO_RECEIVE	"ready_receiving_tput"
 #define RES_RECEIVE_SUCCESS		"receiving_success"
 #define RES_RECEIVE_FAILURE		"receiving_failed"
 
 #define RES_READY_TO_SEND		"ready_sending_next"
+#define RES_SEND_SUCCESS		"sending_success"
+#define RES_SEND_FAILURE		"sending_failed"
+#define RES_CANNOTFINDFILE		"send_cannot_find_file"
+
+
+/* TEXT */
 
 #define T_CLEARSCREEN	"\033[2J\033[H"
 #define T_SCROLLALOT	"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
 
 
-// Server file directory
+/* DIRECTORIES */
 #define SERVER_FILE_DIR		"files/"
+
+
 #endif
