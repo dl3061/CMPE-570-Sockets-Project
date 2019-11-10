@@ -9,20 +9,25 @@ COMPILE_LINK = gcc -std=c99 -O$(OPT) -Wall -pedantic -g $(LINK_FLAGS) -o $@ $^
 VALGRIND_ECHO = @echo "Testing $^ with valgrind memory command"
 VALGRIND = valgrind --tool=memcheck --leak-check=full --show-reachable=yes --track-origins=yes
 
+MAKE_DIR_ECHO = @echo "mkdir -p $@"
+MAKE_DIR = mkdir -p $@
+
 SHARED_HEADERS = TParam.h Tiger.h THelp.h
 LINK_FLAGS = -lm -lgsl -lgslcblas
 D_FLAGS = 
 
 SERVER_OUT_FILE = err_server.txt
 CLIENT_OUT_FILE = err_client.txt
-FILES_DIRECTORY = files
+
+SERVER_DIRECTORY = TigerS
+CLIENT_DOWNLOADS_DIRRECTORY = Downloads
 
 .PHONY: help
 help:
 	@echo "make options: all, help, clean"
 
 .PHONY: all
-all: TigerC.exe TigerS.exe
+all: TigerC.exe TigerS.exe $(SERVER_DIRECTORY) $(CLIENT_DOWNLOADS_DIRRECTORY)
 	@echo "All executables have been compiled."
 	$(NEXT_LINE)
 
@@ -33,7 +38,8 @@ clean :
 	-rm -f *.exe
 	-rm -f $(SERVER_OUT_FILE)
 	-rm -f $(CLIENT_OUT_FILE)
-	-rm -f $(FILES_DIRECTORY)/*
+	-rm -f $(SERVER_DIRECTORY)/*
+	-rm -f $(CLIENT_DOWNLOADS_DIRRECTORY)/*
 	$(NEXT_LINE)
 
 .PHONY: server
@@ -75,3 +81,12 @@ THelp.o : THelp.c $(SHARED_HEADERS)
 	$(COMPILE_ECHO)
 	$(COMPILE_O)
 	$(NEXT_LINE)
+
+$(SERVER_DIRECTORY): 
+	$(MAKE_DIR_ECHO)
+	$(MAKE_DIR)
+
+$(CLIENT_DOWNLOADS_DIRRECTORY): 
+	$(MAKE_DIR_ECHO)
+	$(MAKE_DIR)
+	

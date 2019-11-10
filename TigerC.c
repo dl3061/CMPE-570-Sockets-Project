@@ -346,13 +346,14 @@ int MainProgramLoop(int server_file_descriptor)
 int SendFile(int server_file_descriptor, char* filepath, int filesize)
 {
 	int retVal = 0;
-	FILE* file = fopen(filepath, "rb");
+
+	// Send Buffer -> data in bite-size packages
+	char send_buffer[BUFFER_SIZE];
 
 	// Store the file in a buffer
-	char* file_buffer = malloc(filesize+1);
+	FILE* file = fopen(filepath, "rb");
+	char* file_buffer = malloc(filesize + 1);
 	memset(file_buffer, 0, filesize + 1);
-
-	char send_buffer[BUFFER_SIZE];
 	
 	if (file_buffer == NULL || send_buffer == NULL) 
 	{
@@ -447,49 +448,96 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 {
 	int retVal = 0;
 
-	// Response (success or fail)
-	char send_buffer[BUFFER_SIZE];
+	// Receive buffer -> receive the data in bite-size packages because large files love to dunk on me.
+	char rec_buffer[BUFFER_SIZE];
 
-	// Determine the filepath 
+	// Determine the filepath (make it unique)
 	char filepath[BUFFER_SIZE];
-	sprintf(filepath, "%s%s", SERVER_FILE_DIR, filename);
+	sprintf(filepath, "%s%s", CLIENT_FILE_DIR, filename);
+	int file_duplicate_check = 0;
+	while (CheckIfFileExists(filepath))
+	{
+		sprintf(filepath, "%s%s_%03d", CLIENT_FILE_DIR, filename, file_duplicate_check);
+		file_duplicate_check++;
+	}
 	FILE* file = fopen(filepath, "wb");
 
-	printf("Receiving file of size %d and saving as: %s\n", filesize, filepath);
+	if (verbose)
+		printf("Receiving file of size %d and saving as: %s\n", filesize, filepath);
 
 	// Store the incoming contents in a buffer
 	char* file_buffer = malloc(filesize + 1);
 	memset(file_buffer, 0, filesize + 1);
-	if (file_buffer)
+
+	// Response (success or fail)
+	char send_buffer[BUFFER_SIZE];
+
+	if (file_buffer == NULL)
 	{
-		if (read(server_file_descriptor, file_buffer, filesize + 1))
-		{
-			file_buffer[filesize] = 0;
-			fwrite(file_buffer, sizeof(char), filesize, file);
-			fclose(file);
+		fprintf(stderr, "Error at line %d: failed to malloc.\n", __LINE__);
 
-			printf("Success! File %s saved to %s!\n", filename, filepath);
-
-			sprintf(send_buffer, "%s", RES_RECEIVE_SUCCESS);
-			retVal = 1;
-
-			// Send the response
-			send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
-		}
-		else
-		{
-			fprintf(stderr, "Error at line %d: failed to receice data.\n", __LINE__);
-
-			sprintf(send_buffer, "%s", RES_RECEIVE_FAILURE);
-			retVal = -1;
-
-			// Send the response
-			send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
-		}
+		// Tell the server to abandon shop
+		sprintf(send_buffer, "%s", REQ_ABORT_RECEIVE);
+		send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
 	}
 	else
 	{
-		fprintf(stderr, "Error at line %d: failed to malloc.\n", __LINE__);
+		// Tell the server to start
+		sprintf(send_buffer, "%s", REQ_READY_TO_RECEIVE);
+		send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
+
+		// Read the incoming data in groups of BUFFER_SIZE
+		int read_success = 1;
+		for (int i = 0; i < (filesize / BUFFER_SIZE) + 1; i++)
+		{
+			memset(rec_buffer, 0, BUFFER_SIZE);
+
+			// Read the next set of BUFFER_SIZE
+			int bSuccess = read(server_file_descriptor, rec_buffer, BUFFER_SIZE);
+			if (bSuccess)
+			{
+				// Copy the data from the receive buffer to the file_buffer
+				for (int j = 0; j < BUFFER_SIZE; j++)
+				{
+					if (i*BUFFER_SIZE + j < filesize)
+					{
+						file_buffer[i*BUFFER_SIZE + j] = rec_buffer[j];
+					}
+				}
+			}
+			else
+			{
+				read_success = 0;
+			}
+		}
+
+		if (read_success)
+		{
+
+#ifdef TEST_BINARY_READ
+			// Test the binary read
+			fprintf(stdout, "Reading binary: \n");
+			for (int i = 0; i < filesize; i++)
+			{
+				fprintf(stdout, "%u", file_buffer[i]);
+			}
+#endif
+
+			// Write the buffer to a file
+			fwrite(file_buffer, sizeof(char), filesize, file);
+			fclose(file);
+
+			if (verbose)
+				printf("Success! File %s saved to %s!\n", filename, filepath);
+			
+			retVal = 1;
+		}
+		else
+		{
+			// Something went wrong
+			fprintf(stderr, "Error at line %d: failed to receice data.\n", __LINE__);
+			retVal = -1;
+		}
 	}
 
 	// Cleanup

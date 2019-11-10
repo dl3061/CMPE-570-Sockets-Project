@@ -176,7 +176,7 @@ int MainProgramLoop(int client_file_descriptor)
 						if (CheckIfFileExists(send_filename))
 						{
 							if (verbose)
-								printf("Ready to send file: %s\n", file_token);
+								printf("Ready to send file: %s\n", send_filename);
 
 							sending_file = 1;
 							send_filesize = GetFilesize(send_filename);
@@ -383,41 +383,65 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 int SendFile(int client_file_descripttor, char* filepath, int filesize)
 {
 	int retVal = 0;
-	FILE* file = fopen(filepath, "rb");
+
+	// Send Buffer -> data in bite-size packages
+	char send_buffer[BUFFER_SIZE];
 
 	// Store the file in a buffer
+	FILE* file = fopen(filepath, "rb");
 	char* file_buffer = malloc(filesize + 1);
 	memset(file_buffer, 0, filesize + 1);
-	if (file_buffer == NULL)
+
+	if (file_buffer == NULL || send_buffer == NULL)
 	{
 		fprintf(stderr, "Error at line %d: failed to malloc.\n", __LINE__);
 	}
 	else
 	{
-		// Copy the contents into a buffer
-		fread(file_buffer, sizeof(char), filesize, file);
-
-		for (int i = 0; i < filesize; i++)
-		{
-			fprintf(stderr, "%u", file_buffer[i]);
-		}
-		fprintf(stderr, "\n\n");
-
-		// Send it over
-		send(client_file_descripttor, file_buffer, strlen(file_buffer), 0);
-
-		// Read response
+		// Read - wait for start or abort
 		char read_buffer[BUFFER_SIZE];
 		if (read(client_file_descripttor, read_buffer, BUFFER_SIZE))
 		{
-			if (strstr(read_buffer, RES_RECEIVE_SUCCESS))
+			if (strstr(read_buffer, REQ_ABORT_RECEIVE))
 			{
-				retVal = 1;
-			}
-			else
-			{
-				fprintf(stderr, "SERVER: %s", read_buffer);
+				// Abort
 				retVal = -1;
+			}
+			else if (strstr(read_buffer, REQ_READY_TO_RECEIVE))
+			{
+				// Copy the contents into a buffer
+				fread(file_buffer, sizeof(char), filesize, file);
+
+#ifdef TEST_BINARY_READ
+				// Test the binary read
+				fprintf(stderr, "Reading binary: \n");
+				for (int i = 0; i < filesize; i++)
+				{
+					fprintf(stderr, "%u", file_buffer[i]);
+				}
+				fprintf(stderr, "\n\n");
+#endif
+
+				// Send the data in groups of BUFFER_SIZE
+				for (int i = 0; i < (filesize / BUFFER_SIZE) + 1; i++)
+				{
+					memset(send_buffer, 0, BUFFER_SIZE);
+
+					// Send the next set of BUFFER_SIZE
+					for (int j = 0; j < BUFFER_SIZE; j++)
+					{
+						// Copy the data from the file buffer to the send buffer
+						if (i*BUFFER_SIZE + j < filesize)
+						{
+							send_buffer[j] = file_buffer[i*BUFFER_SIZE + j];
+						}
+					}
+					send(client_file_descripttor, send_buffer, BUFFER_SIZE, 0);
+				}
+
+				// Done
+				if (verbose)
+					printf("Success! File %s sent to the client!\n", filepath);
 			}
 		}
 	}

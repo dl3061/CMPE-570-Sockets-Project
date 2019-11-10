@@ -74,7 +74,8 @@
 
 
 /* DIRECTORIES */
-#define SERVER_FILE_DIR		"files/"
+#define SERVER_FILE_DIR		"TigerS/"
+#define CLIENT_FILE_DIR		"Downloads/"
 
 
 #endif
