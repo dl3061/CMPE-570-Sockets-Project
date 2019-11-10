@@ -20,11 +20,19 @@
 
 // Prototypes for private functions
 int MainProgramLoop(int client_file_descriptor);
-void* MainProgramLoopStart(void* arg);
+void* MainProgramLoopThread(void* arg);
 int ReceiveFile(int client_file_descriptor, char* filename, int filesize);
 int SendFile(int client_file_descripttor, char* filepath, int filesize);
 
 int verbose = 0;
+
+// For threads
+struct argMainProgramLoopThread {
+	int thread_id;
+	int client_file_descriptor;
+};
+
+pthread_mutex_t file_io_mutex;
 
 int main()
 {
@@ -68,6 +76,13 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
+	// Create the mutex for file IO operations
+	if (pthread_mutex_init(&file_io_mutex, NULL) != 0)
+	{
+		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
 	// Set verbose to true for debugging
 	verbose = 1;
 
@@ -76,6 +91,7 @@ int main()
 	int keep_server_alive = 1;
 	pthread_t tid[MAX_THREADS];
 	int session_cnt = 0;
+	struct argMainProgramLoopThread* args;
 	while (keep_server_alive)
 	{
 		// Keep on trying to accept socket connections
@@ -88,12 +104,11 @@ int main()
 		}
 		else
 		{
-			printf("Connected: starting session #%d.\n", session_cnt);
+			args = (struct argMainProgramLoopThread *) malloc(sizeof(struct argMainProgramLoopThread));
+			args->thread_id = session_cnt;
+			args->client_file_descriptor = new_socket_fd;
 
-			// MainProgramLoop(new_socket_fd);
-			pthread_create(&(tid[session_cnt]), NULL, &MainProgramLoopStart, (void *) &new_socket_fd);
-			
-			printf("Disconnected: ending session #%d.\n", session_cnt);
+			pthread_create(&(tid[session_cnt]), NULL, &MainProgramLoopThread, (void *) args);
 
 			session_cnt += 1;
 		}
@@ -102,6 +117,8 @@ int main()
 			keep_server_alive = 0;
 	}
 
+	pthread_mutex_destroy(&file_io_mutex);
+
 	return 0;
 }
 
@@ -109,16 +126,28 @@ int main()
 /*
 	Wrapper for main program loop
 */
-void* MainProgramLoopStart(void* arg)
+void* MainProgramLoopThread(void* arg)
 {
-	int client_file_descriptor = *((int *)arg);
+	// Get args
+	struct argMainProgramLoopThread* args = (struct argMainProgramLoopThread *) arg;
+	int thread_id = args->thread_id;
+	int client_file_descriptor = args->client_file_descriptor;
 	
+	// Print start
+	printf("Connected: starting session #%d.\n", thread_id);
+
 	int success = MainProgramLoop(client_file_descriptor);
 	if (success)
 	{
 		if (verbose)
 			printf("Exiting thread peacefully.\n");
 	}
+
+	// Print finish
+	printf("Disconnected: ending session #%d.\n", thread_id);
+
+	// Cleanup
+	free(args);
 
 	pthread_exit(NULL);
 }
@@ -296,7 +325,6 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 	// Determine the filepath 
 	char filepath[BUFFER_SIZE];
 	sprintf(filepath, "%s%s", SERVER_FILE_DIR, filename);
-	FILE* file = fopen(filepath, "wb");
 	
 	if (verbose)
 		printf("Receiving file of size %d and saving as: %s\n", filesize, filepath);
@@ -369,9 +397,12 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 			}
 #endif
 			
-			// Write the buffer to a file
+			// Write the buffer to a file (use mutex to prevent collision)
+			pthread_mutex_lock(&file_io_mutex);
+			FILE* file = fopen(filepath, "wb");
 			fwrite(file_buffer, sizeof(char), filesize, file);
 			fclose(file);
+			pthread_mutex_unlock(&file_io_mutex);
 
 			if (verbose)
 				printf("Success! File %s saved to %s!\n", filename, filepath);
@@ -419,7 +450,6 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 	char send_buffer[BUFFER_SIZE];
 
 	// Store the file in a buffer
-	FILE* file = fopen(filepath, "rb");
 	char* file_buffer = malloc(filesize + 1);
 	memset(file_buffer, 0, filesize + 1);
 
@@ -440,8 +470,12 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 			}
 			else if (strstr(read_buffer, REQ_READY_TO_RECEIVE))
 			{
-				// Copy the contents into a buffer
+				// Copy the contents into a buffer (use mutex to prevent collision)
+				pthread_mutex_lock(&file_io_mutex);
+				FILE* file = fopen(filepath, "rb");
 				fread(file_buffer, sizeof(char), filesize, file);
+				fclose(file);
+				pthread_mutex_unlock(&file_io_mutex);
 
 #ifdef TEST_BINARY_READ
 				// Test the binary read
@@ -483,8 +517,6 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 		free(file_buffer);
 		file_buffer = NULL;
 	}
-
-	fclose(file);
 
 	return retVal;
 }

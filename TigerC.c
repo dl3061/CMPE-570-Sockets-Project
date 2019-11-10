@@ -316,7 +316,7 @@ int MainProgramLoop(int server_file_descriptor)
 					int success = ReceiveFile(server_file_descriptor, treceive_filename, treceive_filesize);
 
 					if (success == 1)
-						sprintf(err_msg, "SERVER: Successfully received file.");
+						sprintf(err_msg, "SERVER: Successfully downloaded file %s to %s directory.", treceive_filename, CLIENT_FILE_DIR);
 					else
 						sprintf(err_msg, "SERVER: An error has occured while trying to transfer the file.");
 
