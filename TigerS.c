@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <netinet/in.h> 
+#include <pthread.h>
 
 #include "Tiger.h"
 #include "TParam.h"
@@ -19,6 +20,7 @@
 
 // Prototypes for private functions
 int MainProgramLoop(int client_file_descriptor);
+void* MainProgramLoopStart(void* arg);
 int ReceiveFile(int client_file_descriptor, char* filename, int filesize);
 int SendFile(int client_file_descripttor, char* filepath, int filesize);
 
@@ -72,11 +74,11 @@ int main()
 	// Apply highly advanced scientific technology 
 	//	to accept incoming sockets and open a new thread for each
 	int keep_server_alive = 1;
+	pthread_t tid[MAX_THREADS];
 	int session_cnt = 0;
 	while (keep_server_alive)
 	{
 		// Keep on trying to accept socket connections
-
 		// The accept() call creates a new socket descriptor with the same properties as socket and returns it to the caller. 
 		int new_socket_fd = accept(socket_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
 		
@@ -86,21 +88,48 @@ int main()
 		}
 		else
 		{
-			session_cnt += 1;
-
-			// @todo Start a new thread
-
 			printf("Connected: starting session #%d.\n", session_cnt);
-			MainProgramLoop(new_socket_fd);
+
+			// MainProgramLoop(new_socket_fd);
+			pthread_create(&(tid[session_cnt]), NULL, &MainProgramLoopStart, (void *) &new_socket_fd);
+			
 			printf("Disconnected: ending session #%d.\n", session_cnt);
+
+			session_cnt += 1;
 		}
+
+		if (session_cnt > MAX_THREADS)
+			keep_server_alive = 0;
 	}
 
 	return 0;
 }
 
+
+/*
+	Wrapper for main program loop
+*/
+void* MainProgramLoopStart(void* arg)
+{
+	int client_file_descriptor = *((int *)arg);
+	
+	int success = MainProgramLoop(client_file_descriptor);
+	if (success)
+	{
+		if (verbose)
+			printf("Exiting thread peacefully.\n");
+	}
+
+	pthread_exit(NULL);
+}
+
+/*
+	Main Program Loop
+*/
 int MainProgramLoop(int client_file_descriptor)
 {
+	int retVal = 0;
+
 	// Server reads first, then sends
 	int keep_program_alive = 1;
 	char read_buffer[BUFFER_SIZE];
@@ -222,6 +251,7 @@ int MainProgramLoop(int client_file_descriptor)
 							printf("Got an end command!\n");
 
 						keep_program_alive = 0;
+						retVal = 1;
 						sprintf(send_buffer, RES_ENDCLIENT);
 					}
 					else
@@ -246,7 +276,8 @@ int MainProgramLoop(int client_file_descriptor)
 		if (sending_file)
 			SendFile(client_file_descriptor, send_filename, send_filesize);
 	}
-	return 0;
+
+	return retVal;
 }
 
 
