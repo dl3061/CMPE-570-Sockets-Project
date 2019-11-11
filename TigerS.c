@@ -243,6 +243,17 @@ int MainProgramLoop(int client_file_descriptor)
 					// Failed -> return cannot auth
 					sprintf(send_buffer, RES_AUTHFAILED);
 				}
+			} 
+			
+			// TEND - can also run if user is unauthorized
+			else if (strstr(read_buffer, CMD_END))
+			{
+				if (verbose)
+					printf("Got an end command!\n");
+
+				keep_program_alive = 0;
+				retVal = 1;
+				sprintf(send_buffer, RES_ENDCLIENT);
 			}
 			else 
 			{
@@ -302,16 +313,7 @@ int MainProgramLoop(int client_file_descriptor)
 						sprintf(send_buffer, RES_READY_TO_RECEIVE);
 					}
 
-					// TEND
-					else if (strstr(read_buffer, CMD_END))
-					{
-						if (verbose)
-							printf("Got an end command!\n");
-
-						keep_program_alive = 0;
-						retVal = 1;
-						sprintf(send_buffer, RES_ENDCLIENT);
-					}
+					// ELSE
 					else
 					{
 						fprintf(stderr, "Got unexpected request. %s\n", read_buffer);
