@@ -99,7 +99,6 @@ int main()
 	int keep_server_alive = 1;
 	pthread_t tid[MAX_THREADS];
 	int session_cnt = 0;
-	struct argMainProgramLoopThread* args;
 	while (keep_server_alive)
 	{
 		// Keep on trying to accept socket connections
@@ -112,8 +111,12 @@ int main()
 		}
 		else
 		{
-			args = (struct argMainProgramLoopThread *) malloc(sizeof(struct argMainProgramLoopThread));
-			args->thread_id = session_cnt;
+			// Pass the arguments through an args struct
+			//		Malloc it here so we're pointing at new memory each thread (no collision), 
+			//		but each thread retains pointer to its respective malloced block.
+			//		Free it at the end of each thread when it exists. 
+			struct argMainProgramLoopThread* args = (struct argMainProgramLoopThread *) malloc(sizeof(struct argMainProgramLoopThread));
+			args->thread_id = session_cnt + 1; // make it 1-index
 			args->client_file_descriptor = new_socket_fd;
 
 			pthread_create(&(tid[session_cnt]), NULL, &MainProgramLoopThread, (void *) args);
