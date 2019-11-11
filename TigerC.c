@@ -561,6 +561,7 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 			{
 				read_success = 0;
 			}
+			DELAY;
 		}
 
 		if (read_success)
@@ -577,6 +578,7 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 
 			// Write the buffer to a file
 			fwrite(file_buffer, sizeof(char), filesize, file);
+			fflush(file);
 			fclose(file);
 
 			if (verbose)

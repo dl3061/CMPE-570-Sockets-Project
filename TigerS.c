@@ -399,6 +399,7 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 			{
 				read_success = 0;
 			}
+			DELAY;
 		}
 
 		//if (read(client_file_descriptor, (void *)rec_buffer, (filesize + 1)))
@@ -435,7 +436,9 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 			pthread_mutex_lock(&file_io_mutex);
 			FILE* file = fopen(filepath, "wb");
 			fwrite(file_buffer, sizeof(char), filesize, file);
+			fflush(file);
 			fclose(file);
+			DELAY;
 			pthread_mutex_unlock(&file_io_mutex);
 
 			if (verbose)
@@ -541,6 +544,7 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 				FILE* file = fopen(filepath, "rb");
 				fread(file_buffer, sizeof(char), filesize, file);
 				fclose(file);
+				DELAY;
 				pthread_mutex_unlock(&file_io_mutex);
 
 #ifdef TEST_BINARY_READ
