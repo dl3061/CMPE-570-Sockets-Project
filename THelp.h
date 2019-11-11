@@ -22,6 +22,11 @@ int VerifyUser(char* username, char* password);
 int CheckIfFileExists(char* filename);
 
 /*
+	Checks if a file exists and has more than 0 bytes
+*/
+int CheckIfFileExistsWithContent(char* filename);
+
+/*
 	Gets the file size of a file
 */
 int GetFilesize(char* filename);

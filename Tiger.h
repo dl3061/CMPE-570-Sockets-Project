@@ -10,6 +10,7 @@
 #define TIGER_H
 
 // #define TEST_BINARY_READ
+// #define RESEND_ON_FALURE
 
 #define PORT	(50416)
 #define BASE_SOCKET		(0)
@@ -25,6 +26,7 @@
 #define	CMD_TPUT		"tput"
 //#define	CMD_END			"tend"
 #define CMD_END			"exit"		// From bash script
+#define CMD_RENAME_DOWNLOADED_FILE	"as"
 
 /* CLIENT REQUESTS */
 
@@ -37,6 +39,8 @@
 #define REQ_READY_TO_RECEIVE	"ready_receiving_tget"
 #define REQ_ABORT_RECEIVE		"not_ready_stop_that_plz"
 
+#define REQ_BADDATA_RESEND		"resend_plz_something_went_wrong_just_like_all_my_hopes_and_dreams"
+#define REQ_GOODDATA_END		"thanks_for_all_the_good_data"
 
 /* SERVER RESPONSES */
 
@@ -63,6 +67,7 @@
 #define RES_READY_TO_RECEIVE	"ready_receiving_tput"
 #define RES_RECEIVE_SUCCESS		"receiving_success"
 #define RES_RECEIVE_FAILURE		"receiving_failed"
+#define RES_PLEASE_RESEND		"receiving_need_resend"
 
 #define RES_READY_TO_SEND		"ready_sending_next"
 #define RES_SEND_SUCCESS		"sending_success"

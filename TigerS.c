@@ -307,7 +307,7 @@ int MainProgramLoop(int client_file_descriptor)
 		}
 
 		// Send response status 
-		send(client_file_descriptor, send_buffer, strlen(send_buffer), 0);
+		send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
 
 		// Temporarily interrupt loop to send/receive files
 		if (receive_file)
@@ -418,12 +418,37 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 			if (verbose)
 				printf("Success! File %s saved to %s!\n", filename, filepath);
 
+#ifdef RESEND_ON_FALURE
+
+			if (GetFilesize(filepath) == 0)
+			{
+				// Something went wrong
+				fprintf(stderr, "Error: filesize less than expected.");
+
+				// Let the client know this was a triumph. I'm making a note here: huge success.
+				sprintf(send_buffer, "%s", RES_PLEASE_RESEND);
+				send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+
+				// And here we go again
+				retVal = ReceiveFile(client_file_descriptor, filename, filesize);
+			}
+			else
+			{
+				// Let the client know this was a triumph. I'm making a note here: huge success.
+				sprintf(send_buffer, "%s", RES_RECEIVE_SUCCESS);
+				send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+
+				// It's hard to overstate my satisfaction
+				retVal = 1;
+			}
+#else
 			// Let the client know this was a triumph. I'm making a note here: huge success.
 			sprintf(send_buffer, "%s", RES_RECEIVE_SUCCESS);
-			send(client_file_descriptor, send_buffer, strlen(send_buffer), 0);
+			send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
 
 			// It's hard to overstate my satisfaction
 			retVal = 1;
+#endif
 		}
 		else
 		{
@@ -431,7 +456,7 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 
 			// Let the client know something went horribly worng.
 			sprintf(send_buffer, "%s", RES_RECEIVE_FAILURE);
-			send(client_file_descriptor, send_buffer, strlen(send_buffer), 0);
+			send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
 
 			// 
 			retVal = -1;
@@ -456,6 +481,9 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 int SendFile(int client_file_descripttor, char* filepath, int filesize)
 {
 	int retVal = 0;
+	
+	// Buffer to send incoming data
+	char read_buffer[BUFFER_SIZE];
 
 	// Send Buffer -> data in bite-size packages
 	char send_buffer[BUFFER_SIZE];
@@ -471,8 +499,12 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 	else
 	{
 		// Read - wait for start or abort
-		char read_buffer[BUFFER_SIZE];
-		if (read(client_file_descripttor, read_buffer, BUFFER_SIZE))
+		memset(read_buffer, 0, BUFFER_SIZE);
+		if (read(client_file_descripttor, read_buffer, BUFFER_SIZE) < 0)
+		{
+			fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
+		}
+		else
 		{
 			if (strstr(read_buffer, REQ_ABORT_RECEIVE))
 			{
@@ -515,6 +547,39 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 					send(client_file_descripttor, send_buffer, BUFFER_SIZE, 0);
 				}
 
+#ifdef RESEND_ON_FALURE
+				// Read client response
+				memset(read_buffer, 0, BUFFER_SIZE);
+				if (read(client_file_descripttor, read_buffer, BUFFER_SIZE) < 0)
+				{
+					fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
+				}
+				else
+				{
+					if (strstr(read_buffer, REQ_BADDATA_RESEND))
+					{
+						// Reply okay
+						memset(send_buffer, 0, BUFFER_SIZE);
+						sprintf(send_buffer, "%s", RES_OKAY);
+						send(client_file_descripttor, send_buffer, BUFFER_SIZE, 0);
+
+						// And here we go again;
+						retVal = SendFile(client_file_descripttor, filepath, filesize);
+					}
+					else if(strstr(read_buffer, REQ_GOODDATA_END))
+					{
+						// Reply goodbye
+						memset(send_buffer, 0, BUFFER_SIZE);
+						sprintf(send_buffer, "%s", RES_OKAY);
+						send(client_file_descripttor, send_buffer, BUFFER_SIZE, 0);
+
+						retVal = 1;
+					}
+				}
+#else
+				retVal = 1;
+#endif
+				
 				// Done
 				if (verbose)
 					printf("Success! File %s sent to the client!\n", filepath);

@@ -57,6 +57,11 @@ client: TigerC.exe $(CLIENT_DOWNLOADS_DIRRECTORY)
 	$(NEXT_LINE) >> $(CLIENT_OUT_FILE)
 	./TigerC.exe 2> $(CLIENT_OUT_FILE)
 	
+.PHONY: test
+test: TigerC.exe TigerS.exe $(SERVER_DIRECTORY) $(CLIENT_DOWNLOADS_DIRRECTORY)
+	./myTest.sh 2> $(CLIENT_OUT_FILE)
+	$(NEXT_LINE)
+
 TigerC.exe : TigerC.o TParam.o THelp.o
 	$(COMPILE_LINK_ECHO)
 	$(COMPILE_LINK)

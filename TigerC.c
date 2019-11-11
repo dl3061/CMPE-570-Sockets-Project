@@ -50,6 +50,9 @@ int main()
 
 	// Main
 	MainProgramLoop(socket_fd);
+
+	// Bid farewell.
+	printf("Goodbye.\n");
 }
 
 
@@ -189,16 +192,38 @@ int MainProgramLoop(int server_file_descriptor)
 			if (verbose)
 				printf("Got a tget command!\n");
 
+			// Get the filename
 			char* filename = GetParam(input_buffer, 1, " \n");
+
+			// Check if the user specified -as override-name
+			char* as_override = GetParam(input_buffer, 2, " \n");
+			char* override_filename = GetParam(input_buffer, 3, " \n");
+			int bOverride = (as_override != NULL) && strstr(as_override, CMD_RENAME_DOWNLOADED_FILE);
+
 			if (filename == NULL)
 			{
 				// Invalid command 
 				sprintf(err_msg, "Invalid param. Expected: tget <File Name>");
 			}
+			else if (bOverride && override_filename == NULL)
+			{
+				// Invalid command 
+				sprintf(err_msg, "Invalid param. Expected: tget <File Name On Server> as <File Name>");
+			}
 			else
 			{
 				// Save the filename for when we get the okay-to-send response
-				sprintf(treceive_filename, "%s", filename);
+				// sprintf(treceive_filename, "%s", filename);
+
+				// Check if the user specified "as other-name'
+				if (bOverride)
+				{
+					sprintf(treceive_filename, "%s", override_filename);
+				}
+				else
+				{
+					sprintf(treceive_filename, "%s", filename);
+				}
 
 				// Send the request to download the file
 				sprintf(send_buffer, "%s %s", CMD_TGET, filename);
@@ -262,7 +287,7 @@ int MainProgramLoop(int server_file_descriptor)
 		if (send_send_buffer && (connected_to_server == 1))
 		{
 			// Send the outgoing command from send_buffer
-			send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
+			send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
 
 			// Read response data and save it to the buffer
 			memset(read_buffer, 0, BUFFER_SIZE);
@@ -427,6 +452,12 @@ int SendFile(int server_file_descriptor, char* filepath, int filesize)
 			{
 				retVal = 1;
 			}
+#ifdef RESEND_ON_FALURE
+			else if (strstr(read_buffer, RES_PLEASE_RESEND))
+			{
+				retVal = SendFile(server_file_descriptor, filepath, filesize);
+			}
+#endif
 			else
 			{
 				fprintf(stderr, "SERVER: %s", read_buffer);
@@ -463,7 +494,7 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 	char filepath[BUFFER_SIZE];
 	sprintf(filepath, "%s%s", CLIENT_FILE_DIR, filename);
 	int file_duplicate_check = 0;
-	while (CheckIfFileExists(filepath))
+	while (CheckIfFileExistsWithContent(filepath))
 	{
 		sprintf(filepath, "%s%s_%03d", CLIENT_FILE_DIR, filename, file_duplicate_check);
 		file_duplicate_check++;
@@ -486,13 +517,13 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 
 		// Tell the server to abandon shop
 		sprintf(send_buffer, "%s", REQ_ABORT_RECEIVE);
-		send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
+		send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
 	}
 	else
 	{
 		// Tell the server to start
 		sprintf(send_buffer, "%s", REQ_READY_TO_RECEIVE);
-		send(server_file_descriptor, send_buffer, strlen(send_buffer), 0);
+		send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
 
 		// Read the incoming data in groups of BUFFER_SIZE
 		int read_success = 1;
@@ -537,8 +568,42 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 
 			if (verbose)
 				printf("Success! File %s saved to %s!\n", filename, filepath);
-			
+
+#ifdef RESEND_ON_FALURE
+			char read_buffer[BUFFER_SIZE];
+			if (GetFilesize(filepath) == 0)
+			{
+				// Something went wrong
+				fprintf(stderr, "Error: filesize less than expected for %s.\n", filepath);
+
+				// Reply the data is bbaaaad.
+				memset(send_buffer, 0, BUFFER_SIZE);
+				sprintf(send_buffer, "%s", REQ_BADDATA_RESEND);
+				send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+
+				// I expect a goodbye
+				memset(read_buffer, 0, BUFFER_SIZE);
+				read(server_file_descriptor, read_buffer, BUFFER_SIZE);
+
+				// And here we go again
+				retVal = ReceiveFile(server_file_descriptor, filename, filesize);
+			}
+			else
+			{
+				// Reply the data is good
+				memset(send_buffer, 0, BUFFER_SIZE);
+				sprintf(send_buffer, "%s", REQ_GOODDATA_END);
+				send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+
+				// I expect a goodbye
+				memset(read_buffer, 0, BUFFER_SIZE);
+				read(server_file_descriptor, read_buffer, BUFFER_SIZE);
+
+				retVal = 1;
+			}
+#else
 			retVal = 1;
+#endif
 		}
 		else
 		{

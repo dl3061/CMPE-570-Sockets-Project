@@ -76,6 +76,34 @@ int GetFilesize(char* filename)
 			fclose(file);
 		}
 	}
+	else
+	{
+		return (-1);
+	}
 
 	return filesize;
+}
+
+
+/*
+	Checks if a file exists and has more than 0 bytes
+*/
+int CheckIfFileExistsWithContent(char* filename)
+{
+	// Yes some of these functionc alls are convoluted, but for readability...
+	if (CheckIfFileExists(filename))
+	{
+		if (GetFilesize(filename) > 0)
+		{
+			return 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	else
+	{
+		return 0;
+	}
 }
