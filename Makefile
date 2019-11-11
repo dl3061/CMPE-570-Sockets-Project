@@ -30,6 +30,10 @@ CLIENT_DOWNLOADS_DIRRECTORY = Downloads
 .PHONY: help
 help:
 	@echo "make options: all, help, clean"
+	@echo "     server (run), client (run)"
+	@echo "     test (log ins and uploads/downloads small file 100 times)"
+	@echo "     test_login (just logs in 100 times)"
+	@echo "     test_ftp (logs in and uploads/downloads files of varying size)"
 
 .PHONY: all
 all: TigerC.exe TigerS.exe $(SERVER_DIRECTORY) $(CLIENT_DOWNLOADS_DIRRECTORY)
@@ -57,9 +61,29 @@ client: TigerC.exe $(CLIENT_DOWNLOADS_DIRRECTORY)
 	$(NEXT_LINE) >> $(CLIENT_OUT_FILE)
 	./TigerC.exe 2> $(CLIENT_OUT_FILE)
 	
+.PHONY: test_login
+test_login: TigerC.exe
+	./test_login.sh 2> $(CLIENT_OUT_FILE)
+	$(NEXT_LINE)
+
 .PHONY: test
-test: TigerC.exe TigerS.exe $(SERVER_DIRECTORY) $(CLIENT_DOWNLOADS_DIRRECTORY)
-	./myTest.sh 2> $(CLIENT_OUT_FILE)
+test: TigerC.exe $(CLIENT_DOWNLOADS_DIRRECTORY)
+	./test_ftp_simple.sh 2> $(CLIENT_OUT_FILE)
+	$(NEXT_LINE)
+
+.PHONY: test_gif
+test_gif: TigerC.exe $(CLIENT_DOWNLOADS_DIRRECTORY)
+	./test_ftp_gif.sh 2> $(CLIENT_OUT_FILE)
+	$(NEXT_LINE)
+
+.PHONY: test_ftp
+test_ftp: TigerC.exe $(CLIENT_DOWNLOADS_DIRRECTORY)
+	./test_ftp_files.sh 2> $(CLIENT_OUT_FILE)
+	$(NEXT_LINE)
+
+.PHONY: test_concurrent
+test_concurrent: TigerC.exe
+	./test_concurrent_login.sh 2> $(CLIENT_OUT_FILE)
 	$(NEXT_LINE)
 
 TigerC.exe : TigerC.o TParam.o THelp.o
