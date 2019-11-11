@@ -296,6 +296,7 @@ int MainProgramLoop(int client_file_descriptor)
 					}
 					else
 					{
+						fprintf(stderr, "Got unexpected request. %s\n", read_buffer);
 						sprintf(send_buffer, RES_UNKNOWN);
 					}
 				}
