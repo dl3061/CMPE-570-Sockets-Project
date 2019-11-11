@@ -378,7 +378,7 @@ int ReceiveFile(int client_file_descriptor, char* filename, int filesize)
 	{
 		// Read the incoming data in groups of BUFFER_SIZE
 		int read_success = 1;
-		for (int i = 0; i < (filesize / BUFFER_SIZE) + 1; i++)
+		for (int i = 0; i < (filesize / (int) BUFFER_SIZE) + 1; i++)
 		{
 			memset(rec_buffer, 0, BUFFER_SIZE);
 
@@ -554,7 +554,7 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 #endif
 
 				// Send the data in groups of BUFFER_SIZE
-				for (int i = 0; i < (filesize / BUFFER_SIZE) + 1; i++)
+				for (int i = 0; i < (filesize / (int) BUFFER_SIZE) + 1; i++)
 				{
 					memset(send_buffer, 0, BUFFER_SIZE);
 
@@ -568,6 +568,7 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 						}
 					}
 					send(client_file_descripttor, send_buffer, BUFFER_SIZE, 0);
+					DELAY;
 				}
 
 #ifdef RESEND_ON_FALURE

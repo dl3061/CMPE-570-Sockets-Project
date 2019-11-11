@@ -17,8 +17,10 @@
 
 #define BUFFER_SIZE	(1024)
 
+#define DELAY 	for (int ___T____ = 0; ___T____ < 256; ___T____++) {}
+
 // MAX_THREADS
-#define MAX_THREADS	(1000)
+#define MAX_THREADS 1000
 
 /* COMMANDS */
 

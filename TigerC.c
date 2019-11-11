@@ -337,7 +337,7 @@ int MainProgramLoop(int server_file_descriptor)
 					int success = SendFile(server_file_descriptor, tsend_filename, tsend_filesize);
 
 					if (success == 1)
-						sprintf(err_msg, "SERVER: Successfully transferred file.");
+						sprintf(err_msg, "SERVER: Successfully transferred file %s of size %d.", tsend_filename, tsend_filesize);
 					else
 						sprintf(err_msg, "SERVER: An error has occured while trying to transfer the file.");
 				}
@@ -437,7 +437,7 @@ int SendFile(int server_file_descriptor, char* filepath, int filesize)
 		*/
 
 		// Send the data in groups of BUFFER_SIZE
-		for (int i = 0; i < (filesize / BUFFER_SIZE) + 1; i++)
+		for (int i = 0; i < (filesize / (int) BUFFER_SIZE) + 1; i++)
 		{
 			memset(send_buffer, 0, BUFFER_SIZE);
 
@@ -451,6 +451,7 @@ int SendFile(int server_file_descriptor, char* filepath, int filesize)
 				}
 			}
 			send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+			DELAY;
 		}
 
 		// Send it over
@@ -539,7 +540,7 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 
 		// Read the incoming data in groups of BUFFER_SIZE
 		int read_success = 1;
-		for (int i = 0; i < (filesize / BUFFER_SIZE) + 1; i++)
+		for (int i = 0; i < (filesize / (int) BUFFER_SIZE) + 1; i++)
 		{
 			memset(rec_buffer, 0, BUFFER_SIZE);
 
