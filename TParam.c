@@ -1,8 +1,9 @@
 /*
 	TParams.c
-	David Lin (dl3061@rit.edu)
+	Helper function to parse parameters in a string.
 
-	Helper function to parse param
+	Author:
+	David Lin (dl3061@rit.edu)
 */
 
 #define _POSIX_C_SOURCE 200112L

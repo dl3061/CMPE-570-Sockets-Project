@@ -1,8 +1,9 @@
 /*
 	THelp.h
-	David Lin (dl3061@rit.edu)
-
 	Helper functions
+
+	Author:
+	David Lin (dl3061@rit.edu)
 */
 
 #ifndef THELP_H

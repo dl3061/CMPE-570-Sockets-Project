@@ -1,8 +1,9 @@
 /*
 	THelp.c
-	David Lin (dl3061@rit.edu)
+	Helper functions
 
-	Helper functions 
+	Author:
+	David Lin (dl3061@rit.edu) 
 */
 
 #include <stdio.h>

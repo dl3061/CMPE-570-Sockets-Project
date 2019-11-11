@@ -1,6 +1,14 @@
 /*
 	TigerC.c
+	Main program for the Tiger client.
+
+	Author:
 	David Lin (dl3061@rit.edu)
+
+	Additional Contributions:
+	Jason Ramsden
+	Austin Brogan
+	Susan Margevich
 */
 
 

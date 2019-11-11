@@ -1,5 +1,8 @@
 /*
 	Tiger.h
+	Shared macros and definitions
+
+	Author:
 	David Lin (dl3061@rit.edu)
 */
 
