@@ -18,7 +18,7 @@ MAKE_DIR_ECHO = @echo "mkdir -p $@"
 MAKE_DIR = mkdir -p $@
 
 SHARED_HEADERS = TParam.h Tiger.h THelp.h
-LINK_FLAGS = -lm -lgsl -lgslcblas -lpthread
+LINK_FLAGS = -lm -lgsl -lgslcblas -lpthread -pthread
 D_FLAGS = 
 
 SERVER_OUT_FILE = err_server.txt
