@@ -11,7 +11,7 @@
 
 // #define TEST_BINARY_READ
 
-#define PORT	(8080)
+#define PORT	(50416)
 #define BASE_SOCKET		(0)
 
 #define BUFFER_SIZE	(1024)
@@ -25,7 +25,6 @@
 #define	CMD_TPUT		"tput"
 //#define	CMD_END			"tend"
 #define CMD_END			"exit"		// From bash script
-
 
 /* CLIENT REQUESTS */
 
