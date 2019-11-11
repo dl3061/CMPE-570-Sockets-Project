@@ -30,6 +30,10 @@ int MainProgramLoop(int a_file_descriptor);
 int SendFile(int server_file_descriptor, char* filepath, int filesize);
 int ReceiveFile(int server_file_descriptor, char* filename, int filesize);
 
+#define LOCK_FILE	"client_lock.txt"
+void LockClient(void);
+void UnlockClient(void);
+
 int verbose = 0;
 
 int main()
@@ -86,6 +90,7 @@ int MainProgramLoop(int server_file_descriptor)
 		// Flag to determine whether or not we're sending and expecting a response this
 		//		iteration, depending on the user's input.
 		send_send_buffer = 0;
+		memset(send_buffer, 0, BUFFER_SIZE);
 
 		// Clear and update display
 		printf(T_CLEARSCREEN);
@@ -108,6 +113,7 @@ int MainProgramLoop(int server_file_descriptor)
 		printf("Supported commands:\n");
 		printf("\t%s <TigerS IP Address> <User> <Password>\n", CMD_TCONNECT);
 		printf("\t%s <File Name>\n", CMD_TGET);
+		printf("\t%s <File Name On Server> as <File Name>\n", CMD_TGET);
 		printf("\t%s <File Name>\n", CMD_TPUT);
 		printf("\t%s\n", CMD_END);
 		printf("\n");
@@ -178,6 +184,9 @@ int MainProgramLoop(int server_file_descriptor)
 						// Successfully connected
 						connected_to_server = 1;
 
+						if (verbose)
+							printf("Connected to server. Trying to authenticate...\n");
+
 						// Log in
 						sprintf(send_buffer, "%s %s %s", CMD_TCONNECT, username, password);
 						send_send_buffer = 1;
@@ -216,6 +225,7 @@ int MainProgramLoop(int server_file_descriptor)
 				// sprintf(treceive_filename, "%s", filename);
 
 				// Check if the user specified "as other-name'
+				memset(treceive_filename, 0, BUFFER_SIZE);
 				if (bOverride)
 				{
 					sprintf(treceive_filename, "%s", override_filename);
@@ -284,6 +294,7 @@ int MainProgramLoop(int server_file_descriptor)
 
 
 		// Send outgoing command and read the response if applicable
+		// LockClient();
 		if (send_send_buffer && (connected_to_server == 1))
 		{
 			// Send the outgoing command from send_buffer
@@ -366,6 +377,7 @@ int MainProgramLoop(int server_file_descriptor)
 				}
 			}
 		}
+		// UnlockClient();
 	}
 
 	return 0;
@@ -622,3 +634,25 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 
 	return retVal;
 }
+
+
+void LockClient()
+{
+	while (CheckIfFileExists(LOCK_FILE))
+	{
+		//wait
+	}
+
+	FILE* LockFile = fopen(LOCK_FILE, "w");
+	fprintf(LockFile, "Mine");
+	fclose(LockFile);
+}
+
+void UnlockClient()
+{
+	while (CheckIfFileExists(LOCK_FILE))
+	{
+		remove(LOCK_FILE);
+	}
+}
+

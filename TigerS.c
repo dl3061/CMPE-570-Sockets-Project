@@ -41,6 +41,7 @@ struct argMainProgramLoopThread {
 };
 
 pthread_mutex_t file_io_mutex;
+pthread_mutex_t thread_readsend_mutex;
 
 int main()
 {
@@ -91,15 +92,21 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
+	// Create the mutex for file IO operations
+	if (pthread_mutex_init(&thread_readsend_mutex, NULL) != 0)
+	{
+		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
 	// Set verbose to true for debugging
 	verbose = 1;
 
 	// Apply highly advanced scientific technology 
 	//	to accept incoming sockets and open a new thread for each
-	int keep_server_alive = 1;
 	pthread_t tid[MAX_THREADS];
 	int session_cnt = 0;
-	while (keep_server_alive)
+	while (session_cnt < MAX_THREADS)
 	{
 		// Keep on trying to accept socket connections
 		// The accept() call creates a new socket descriptor with the same properties as socket and returns it to the caller. 
@@ -123,12 +130,19 @@ int main()
 
 			session_cnt += 1;
 		}
+	}
 
-		if (session_cnt > MAX_THREADS)
-			keep_server_alive = 0;
+
+	// Join threads
+	int finished_cnt = 0;
+	while (finished_cnt < MAX_THREADS)
+	{
+		pthread_join(tid[finished_cnt], NULL);
+		finished_cnt += 1;
 	}
 
 	pthread_mutex_destroy(&file_io_mutex);
+	pthread_mutex_destroy(&thread_readsend_mutex);
 
 	return 0;
 }
@@ -189,8 +203,12 @@ int MainProgramLoop(int client_file_descriptor)
 		int receive_file = 0;
 		int sending_file = 0;
 
+		// pthread_mutex_lock(&thread_readsend_mutex);
+			// This doesn't work since a client could still send a message out of order.
+
 		// Read incoming command and save it to the buffer
 		memset(read_buffer, 0, BUFFER_SIZE);
+		memset(send_buffer, 0, BUFFER_SIZE);
 		if (read(client_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
 		{
 			fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
@@ -316,6 +334,8 @@ int MainProgramLoop(int client_file_descriptor)
 
 		if (sending_file)
 			SendFile(client_file_descriptor, send_filename, send_filesize);
+
+		// pthread_mutex_unlock(&thread_readsend_mutex);
 	}
 
 	return retVal;
