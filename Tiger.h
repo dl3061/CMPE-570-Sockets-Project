@@ -16,7 +16,9 @@
 #define BASE_SOCKET		(0)
 
 #define BUFFER_SIZE	(1024)
-#define MAX_THREADS	(100)
+
+// MAX_THREADS
+#define MAX_THREADS	(1000)
 
 /* COMMANDS */
 
