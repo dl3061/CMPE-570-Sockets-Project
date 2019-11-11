@@ -1,3 +1,8 @@
+# David Lin
+# Makefile - adapted from Applied Programming HW (https://github.com/dl3061/AppliedProgrammingHW)
+#			 because no sane mind will rewrite a Makefile from scratch. 
+# For TigerS and TigerC FTP socket program (https://github.com/dl3061/CMPE-570-Sockets-Project) 
+
 NEXT_LINE = @echo ""
 OPT ?= 1
 VERBOSE ?= 
@@ -43,12 +48,12 @@ clean :
 	$(NEXT_LINE)
 
 .PHONY: server
-server: TigerC.exe TigerS.exe
+server: TigerS.exe $(SERVER_DIRECTORY)
 	$(NEXT_LINE) >> $(SERVER_OUT_FILE)
 	./TigerS.exe 2> $(SERVER_OUT_FILE)
 
 .PHONY: client
-client: TigerC.exe TigerS.exe
+client: TigerC.exe $(CLIENT_DOWNLOADS_DIRRECTORY)
 	$(NEXT_LINE) >> $(CLIENT_OUT_FILE)
 	./TigerC.exe 2> $(CLIENT_OUT_FILE)
 	
