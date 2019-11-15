@@ -901,6 +901,8 @@ void* PortRequestProgramThread(void* arg)
 	int* last_port_sent = (int *)malloc(sizeof(int) * 1);
 	*last_port_sent = 0;
 
+	int connections_established = 0;
+
 	while (1)
 	{
 		if (verbose)
@@ -914,6 +916,10 @@ void* PortRequestProgramThread(void* arg)
 		}
 		else
 		{
+			connections_established += 1;
+			if (verbose)
+				printf("Established connection with client #%d.\n", connections_established);
+
 			PortRequestProgram(new_socket_fd, last_port_sent);
 
 			if (verbose)
@@ -935,60 +941,82 @@ void PortRequestProgram(int client_file_descriptor, int* last_port_sent_ptr)
 	// Server reads first, then sends
 	char read_buffer[BUFFER_SIZE];
 	char send_buffer[BUFFER_SIZE];
-	memset(read_buffer, 0, BUFFER_SIZE);
-	memset(send_buffer, 0, BUFFER_SIZE);
+	
+	int keep_program_alive = 1;
 
-	if (read(client_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
+	while (keep_program_alive)
 	{
-		fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
-	}
-	else
-	{
-		if (verbose)
-			printf("Received from client: %s\n", read_buffer);
+		memset(read_buffer, 0, BUFFER_SIZE);
+		memset(send_buffer, 0, BUFFER_SIZE);
 
-		if (strstr(read_buffer, REQ_AVAILABLE_PORT))
+		if (read(client_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
 		{
-			if (verbose)
-				printf("Got a port request!\n");
-
-			// Get an available port
-			int available_port = 0;
-			while (available_port == 0)
-			{
-				pthread_mutex_lock(&port_availability_mutex);
-
-				for (int i = 0; i < MAX_THREADS + 1; i++)
-				{
-					if (portAvailable[i] == 1)
-					{
-						available_port = PORT + i;
-
-						// Keep track of the last PORT sent so it doesn't ever get sent twice in a row
-						if (*last_port_sent_ptr != available_port)
-						{
-							*last_port_sent_ptr = available_port;
-							break;
-						}
-					}
-				}
-
-				pthread_mutex_unlock(&port_availability_mutex);
-			}
-
-			if (verbose)
-				printf("Sending over port %d.\n", available_port);
-
-			// Send that port over
-			sprintf(send_buffer, "%s %d", RES_AVAILABLE_PORT, available_port);
+			fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
 		}
 		else
 		{
-			fprintf(stderr, "ERROR: Got an invalid command when expecting a port request.\n");
-			sprintf(send_buffer, RES_UNKNOWN);
-		}
+			if (verbose)
+				printf("Received from client: %s\n", read_buffer);
 
-		// Send response status 
-		send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+			if (strstr(read_buffer, REQ_AVAILABLE_PORT))
+			{
+				if (verbose)
+					printf("Got a port request!\n");
+
+				// Get an available port
+				int available_port = 0;
+				while (available_port == 0)
+				{
+					pthread_mutex_lock(&port_availability_mutex);
+
+					for (int i = 0; i < MAX_THREADS + 1; i++)
+					{
+						if (portAvailable[i] == 1)
+						{
+							available_port = PORT + i;
+
+							// Keep track of the last PORT sent so it doesn't ever get sent twice in a row
+							if (*last_port_sent_ptr != available_port)
+							{
+								*last_port_sent_ptr = available_port;
+								break;
+							}
+						}
+					}
+
+					pthread_mutex_unlock(&port_availability_mutex);
+				}
+
+				if (verbose)
+					printf("Sending over port %d.\n", available_port);
+
+				// Send that port over
+				sprintf(send_buffer, "%s %d", RES_AVAILABLE_PORT, available_port);
+
+				// Send response status 
+				send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+			}
+			else if (strstr(read_buffer, REQ_END))
+			{
+				// End this connection with the client.
+				if (verbose)
+					printf("Ending port availability program session.\n");
+
+				sprintf(send_buffer, RES_ENDCLIENT);
+
+				// Send response status 
+				send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+
+				keep_program_alive = 0;
+			}
+			else
+			{
+				fprintf(stderr, "ERROR: Got an invalid command when expecting a port request.\n");
+				sprintf(send_buffer, RES_UNKNOWN);
+			}
+
+			// Send response status 
+			// send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+		}
 	}
 }

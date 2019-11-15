@@ -80,6 +80,7 @@ int MainProgramLoop(int server_file_descriptor)
 	int user_authorized = 0;		// default 0, 1 authorized.
 	
 	// User Auth
+	int server_port = 0;
 	char server_ip[BUFFER_SIZE];
 	char username[BUFFER_SIZE];
 	char password[BUFFER_SIZE];
@@ -104,7 +105,7 @@ int MainProgramLoop(int server_file_descriptor)
 		if (connected_to_server == (-1))
 			printf("Failed to connect to TigerS at %s.\n", server_ip);
 		else if (connected_to_server == (1))
-			printf("Connected to TigerS at %s.\n", server_ip);
+			printf("Connected to TigerS at %s using port %d.\n", server_ip, server_port);
 		else
 			printf("Not connected to server.\n");
 
@@ -229,12 +230,15 @@ int MainProgramLoop(int server_file_descriptor)
 									// Set failure flag
 									connected_to_server = (-1);
 								}
+								else
+								{
+									server_port = port;
+									connected_to_server = 1;
+									active_fd = new_socket_fd;
 
-								connected_to_server = 1;
-								active_fd = new_socket_fd;
-
-								if (verbose)
-									printf("Successfully connected to server at port %d!\n", port);
+									if (verbose)
+										printf("Successfully connected to server at port %d!\n", port);
+								}
 							}
 						}
 					}
@@ -703,42 +707,69 @@ int RequestPort(int server_file_descriptor)
 
 	char read_buffer[BUFFER_SIZE];
 	char send_buffer[BUFFER_SIZE];
-	memset(read_buffer, 0, BUFFER_SIZE);
-	memset(send_buffer, 0, BUFFER_SIZE);
 
-	// Request a port
-	sprintf(send_buffer, REQ_AVAILABLE_PORT);
-
-	// Send request
-	send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
-
-	// Read response
-	if (read(server_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
+	int keep_program_alive = 1;
+	while (keep_program_alive)
 	{
-		fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
-	}
-	else
-	{
-		if (verbose)
-			printf("Got response: %s\n", read_buffer);
+		memset(read_buffer, 0, BUFFER_SIZE);
+		memset(send_buffer, 0, BUFFER_SIZE);
 
-		if (strstr(read_buffer, RES_AVAILABLE_PORT))
+		// Request a port
+		sprintf(send_buffer, REQ_AVAILABLE_PORT);
+
+		// Send request
+		send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+
+		// Read response
+		if (read(server_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
 		{
-			char* port_token = GetParam(read_buffer, 1, " \n");
-
-			int port = 0;
-			int i = 0;
-			while (port_token[i])
-			{
-				port = port * 10 + port_token[i] - '0';
-				i++;
-			}
-
-			fprintf(stderr, "Received port: %d.\n", port);
+			fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
+		}
+		else
+		{
 			if (verbose)
-				printf("Received port: %d.\n", port);
+				printf("Got response: %s\n", read_buffer);
 
-			return port;
+			if (strstr(read_buffer, RES_AVAILABLE_PORT))
+			{
+				// Check the port
+				char* port_token = GetParam(read_buffer, 1, " \n");
+
+				int port = 0;
+				int i = 0;
+				while (port_token[i])
+				{
+					port = port * 10 + port_token[i] - '0';
+					i++;
+				}
+
+				// We have a port
+				fprintf(stderr, "Received port: %d.\n", port);
+				if (verbose)
+					printf("Received port: %d.\n", port);
+
+				// Terminate this connection
+				memset(read_buffer, 0, BUFFER_SIZE);
+				memset(send_buffer, 0, BUFFER_SIZE);
+
+				sprintf(send_buffer, REQ_END);
+				send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+
+				/*
+				// Read the response
+				if (read(server_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
+				{
+					printf("Response: %s\n", read_buffer);
+					if (strstr(read_buffer, RES_ENDCLIENT))
+					{
+						keep_program_alive = 0;
+						return port;
+					}
+				}
+				*/
+				keep_program_alive = 0;
+				return port;
+			}
 		}
 	}
 	
