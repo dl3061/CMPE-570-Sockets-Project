@@ -32,6 +32,7 @@ help:
 	@echo "make options: all, help, clean"
 	@echo "     server (run), client (run)"
 	@echo "     test (log ins and uploads/downloads small file 100 times)"
+	@echo "     test_gif (log ins and uploads/downloads small binary file 100 times)"
 	@echo "     test_login (just logs in 100 times)"
 	@echo "     test_ftp (logs in and uploads/downloads files of varying size)"
 
