@@ -29,6 +29,7 @@
 int MainProgramLoop(int a_file_descriptor);
 int SendFile(int server_file_descriptor, char* filepath, int filesize);
 int ReceiveFile(int server_file_descriptor, char* filename, int filesize);
+int RequestPort(int server_file_descriptor);
 
 #define LOCK_FILE	"client_lock.txt"
 void LockClient(void);
@@ -62,6 +63,10 @@ int main()
 
 int MainProgramLoop(int server_file_descriptor)
 {
+	// Keeping track of server file descriptors
+	int active_fd = server_file_descriptor;	// Can change after getting a port
+	int orig_socket_fd = server_file_descriptor;
+
 	// Client sends first, then reads
 	int keep_program_alive = 1;
 	char read_buffer[BUFFER_SIZE];
@@ -150,30 +155,23 @@ int MainProgramLoop(int server_file_descriptor)
 			}
 			else
 			{
-				// Save params in their respective variables
-				sprintf(server_ip, "%s", ip_token);
-				sprintf(username, "%s", username_token);
-				sprintf(password, "%s", password_token);
-
-				// Address(?)
-				struct sockaddr_in serv_addr;
-				serv_addr.sin_family = AF_INET;
-				serv_addr.sin_port = htons(PORT);
-
-				// Convert IPv4 and IPv6 addresses from text to binary form 
-				if (inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0)
+				// First, try to connect to the server and get a valid port.
+				if (connected_to_server == 0)
 				{
-					fprintf(stderr, "Error at line %d: Invalid address %s. Address not supported. \n",
-						__LINE__, server_ip);
+					// Save params in their respective variables
+					sprintf(server_ip, "%s", ip_token);
+					sprintf(username, "%s", username_token);
+					sprintf(password, "%s", password_token);
 
-					// Set failure flag
-					connected_to_server = (-1);
-				}
-				else
-				{
-					if (connect(server_file_descriptor, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+					// Address(?)
+					struct sockaddr_in serv_addr;
+					serv_addr.sin_family = AF_INET;
+					serv_addr.sin_port = htons(PORT);
+
+					// Convert IPv4 and IPv6 addresses from text to binary form 
+					if (inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0)
 					{
-						fprintf(stderr, "Error at line %d: Connection to IP %s failed.\n",
+						fprintf(stderr, "Error at line %d: Invalid address %s. Address not supported. \n",
 							__LINE__, server_ip);
 
 						// Set failure flag
@@ -181,16 +179,76 @@ int MainProgramLoop(int server_file_descriptor)
 					}
 					else
 					{
-						// Successfully connected
-						connected_to_server = 1;
+						if (connect(orig_socket_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+						{
+							fprintf(stderr, "Error at line %d: Connection to IP %s failed.\n",
+								__LINE__, server_ip);
 
-						if (verbose)
-							printf("Connected to server. Trying to authenticate...\n");
+							// Set failure flag
+							connected_to_server = (-1);
+						}
+						else
+						{
+							if (verbose)
+								printf("Connected to the server! Requesting port....\n");
 
-						// Log in
-						sprintf(send_buffer, "%s %s %s", CMD_TCONNECT, username, password);
-						send_send_buffer = 1;
+							// Successfully connected to port program.
+							// Request a port.
+							int port = RequestPort(active_fd);
+
+							if (verbose)
+								printf("Got port: %d!\n", port);
+
+							int new_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+							// Try to connect
+							// Address(?)
+							struct sockaddr_in serv_addr_port;
+							serv_addr_port.sin_family = AF_INET;
+							serv_addr_port.sin_port = htons(port);
+
+							// Convert IPv4 and IPv6 addresses from text to binary form 
+							if (inet_pton(AF_INET, server_ip, &serv_addr_port.sin_addr) <= 0)
+							{
+								fprintf(stderr, "Error at line %d: Invalid address %s. Address not supported. \n",
+									__LINE__, server_ip);
+
+								// Set failure flag
+								connected_to_server = (-1);
+							}
+							else
+							{
+								if (verbose)
+									printf("Trying to reconnect to server at port %d...\n", port);
+
+								if (connect(new_socket_fd, (struct sockaddr *)&serv_addr_port, sizeof(serv_addr_port)) < 0)
+								{
+									fprintf(stderr, "Error at line %d: Connection to IP %s at port %d failed.\n",
+										__LINE__, server_ip, port);
+
+									// Set failure flag
+									connected_to_server = (-1);
+								}
+
+								connected_to_server = 1;
+								active_fd = new_socket_fd;
+
+								if (verbose)
+									printf("Successfully connected to server at port %d!\n", port);
+							}
+						}
 					}
+				}
+			
+				// Once connected, try to authenticate. If already connected previous, just re-authenticate.
+				if (connected_to_server == 1)
+				{
+					if (verbose)
+						printf("Trying to authenticate...\n");
+
+					// Log in
+					sprintf(send_buffer, "%s %s %s", CMD_TCONNECT, username, password);
+					send_send_buffer = 1;
 				}
 			}
 		}
@@ -298,11 +356,11 @@ int MainProgramLoop(int server_file_descriptor)
 		if (send_send_buffer && (connected_to_server == 1))
 		{
 			// Send the outgoing command from send_buffer
-			send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+			send(active_fd, send_buffer, BUFFER_SIZE, 0);
 
 			// Read response data and save it to the buffer
 			memset(read_buffer, 0, BUFFER_SIZE);
-			if (read(server_file_descriptor, read_buffer, BUFFER_SIZE))
+			if (read(active_fd, read_buffer, BUFFER_SIZE))
 			{
 				// Print the data in
 				if (verbose)
@@ -334,7 +392,7 @@ int MainProgramLoop(int server_file_descriptor)
 					sprintf(err_msg, "SERVER: Ready to receive.");
 
 					// Interrupt loop to transfer data
-					int success = SendFile(server_file_descriptor, tsend_filename, tsend_filesize);
+					int success = SendFile(active_fd, tsend_filename, tsend_filesize);
 
 					if (success == 1)
 						sprintf(err_msg, "SERVER: Successfully transferred file %s of size %d.", tsend_filename, tsend_filesize);
@@ -357,7 +415,7 @@ int MainProgramLoop(int server_file_descriptor)
 					}
 
 					// Interrupt loop to receive data
-					int success = ReceiveFile(server_file_descriptor, treceive_filename, treceive_filesize);
+					int success = ReceiveFile(active_fd, treceive_filename, treceive_filesize);
 
 					if (success == 1)
 						sprintf(err_msg, "SERVER: Successfully downloaded file %s to %s directory.", treceive_filename, CLIENT_FILE_DIR);
@@ -639,6 +697,55 @@ int ReceiveFile(int server_file_descriptor, char* filename, int filesize)
 }
 
 
+int RequestPort(int server_file_descriptor)
+{
+	// Client sends first, then reads
+
+	char read_buffer[BUFFER_SIZE];
+	char send_buffer[BUFFER_SIZE];
+	memset(read_buffer, 0, BUFFER_SIZE);
+	memset(send_buffer, 0, BUFFER_SIZE);
+
+	// Request a port
+	sprintf(send_buffer, REQ_AVAILABLE_PORT);
+
+	// Send request
+	send(server_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+
+	// Read response
+	if (read(server_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
+	{
+		fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
+	}
+	else
+	{
+		if (verbose)
+			printf("Got response: %s\n", read_buffer);
+
+		if (strstr(read_buffer, RES_AVAILABLE_PORT))
+		{
+			char* port_token = GetParam(read_buffer, 1, " \n");
+
+			int port = 0;
+			int i = 0;
+			while (port_token[i])
+			{
+				port = port * 10 + port_token[i] - '0';
+				i++;
+			}
+
+			fprintf(stderr, "Received port: %d.\n", port);
+			if (verbose)
+				printf("Received port: %d.\n", port);
+
+			return port;
+		}
+	}
+	
+	return 0;
+}
+
+
 void LockClient()
 {
 	while (CheckIfFileExists(LOCK_FILE))
@@ -658,4 +765,3 @@ void UnlockClient()
 		remove(LOCK_FILE);
 	}
 }
-

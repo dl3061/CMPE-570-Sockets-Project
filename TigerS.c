@@ -28,11 +28,23 @@
 
 // Prototypes for private functions
 int MainProgramLoop(int client_file_descriptor);
+void* PortRequestProgramThread(void* arg);
+void PortRequestProgram(int client_file_descriptor, int* last_port_sent_ptr);
+void* MainProgramThread(void* arg);
 void* MainProgramLoopThread(void* arg);
 int ReceiveFile(int client_file_descriptor, char* filename, int filesize);
 int SendFile(int client_file_descripttor, char* filepath, int filesize);
 
+// Global / member variables
 int verbose = 0;
+
+/*	Keeps track of which threads (and their ports) are free for use.
+	Each thread will set themselves unavailable after accepting
+	a client and available again after the client exits. 
+	The Port Availability program/thread will check this to return
+	available threads.
+*/
+int portAvailable[MAX_THREADS+1];
 
 // For threads
 struct argMainProgramLoopThread {
@@ -40,16 +52,105 @@ struct argMainProgramLoopThread {
 	int client_file_descriptor;
 };
 
+struct argMainProgramThread
+{
+	int thread_id;
+};
+
+struct argPortRequestProgramThread
+{
+	int thread_id;
+};
+
+// This mutex allows for file IO to only occur in one thread at a time,
+//		to prevent conflict with put-ing a file and get-ing the same file.
 pthread_mutex_t file_io_mutex;
+
+// This mutex was used so only one thread could read/send at a time.
+//		Unfortunately, this does not prevent the undesired client from trying 
+//		to read/send data meant for a different client
 pthread_mutex_t thread_readsend_mutex;
+
+// Mutex for only creating one socket a time when the threads are
+//		are responsible for initializing the socket.
+pthread_mutex_t create_socket_mutex;
+
+// Mutex for only having one socket accept at a time. Unused because bugs.
+pthread_mutex_t accept_socket_mutex;
+
+// Mutex for reading the global portAvailable array, which keeps track
+//		of which threads (and their ports) are free for use. Each thread
+//		will set themselves unavailable after accepting a client and available
+//		again after the client exits. 
+pthread_mutex_t port_availability_mutex;
+
+// Mutex for avoiding sending the same port as available twice before 
+//		a client actually accepts and makes it unavailable.
+pthread_mutex_t port_available_wait_to_accept_mutex;
 
 int main()
 {
+
+	// Create the mutex for file IO operations
+	if (pthread_mutex_init(&file_io_mutex, NULL) != 0)
+	{
+		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Create the mutex for avoiding thread multiplexing 
+	if (pthread_mutex_init(&thread_readsend_mutex, NULL) != 0)
+	{
+		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Create the mutex for creating threads
+	if (pthread_mutex_init(&create_socket_mutex, NULL) != 0)
+	{
+		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Create the mutex for creating threads
+	if (pthread_mutex_init(&accept_socket_mutex, NULL) != 0)
+	{
+		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Create the mutex for reading the availability array
+	if (pthread_mutex_init(&port_availability_mutex, NULL) != 0)
+	{
+		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Create the mutex for reading the availability array
+	if (pthread_mutex_init(&port_available_wait_to_accept_mutex, NULL) != 0)
+	{
+		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Set verbose to true for debugging
+	verbose = 1;
+
+	// Set availability of all to none
+	pthread_mutex_lock(&port_availability_mutex);
+	for (int i = 0; i < MAX_THREADS+1; i++)
+	{
+		portAvailable[i] = 0;
+	}
+	pthread_mutex_unlock(&port_availability_mutex);
+
+#ifndef  INIT_SOCKET_IN_THREAD
+
 	// Create the socket file descriptor
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-		// AF_INET -> IPV4 protocol
-		// SOCK_STREAM -> TCP
-		// Protocol -> 0 (Internet Protocol)
+	// AF_INET -> IPV4 protocol
+	// SOCK_STREAM -> TCP
+	// Protocol -> 0 (Internet Protocol)
 	if (socket_fd == 0)
 	{
 		fprintf(stderr, "Error at line %d: Creating socket failed.\n", __LINE__);
@@ -72,7 +173,7 @@ int main()
 	address.sin_port = htons(PORT);
 
 	// Bind the socket
-	if (bind(socket_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+	if (bind(socket_fd, (struct sockaddr*) & address, sizeof(address)) < 0)
 	{
 		fprintf(stderr, "Error at line %d: bind failure.\n", __LINE__);
 		exit(EXIT_FAILURE);
@@ -85,29 +186,25 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
-	// Create the mutex for file IO operations
-	if (pthread_mutex_init(&file_io_mutex, NULL) != 0)
-	{
-		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
-		exit(EXIT_FAILURE);
-	}
-
-	// Create the mutex for file IO operations
-	if (pthread_mutex_init(&thread_readsend_mutex, NULL) != 0)
-	{
-		fprintf(stderr, "Error at line %d: Mutex init has failed.\n", __LINE__);
-		exit(EXIT_FAILURE);
-	}
-
-	// Set verbose to true for debugging
-	verbose = 1;
+#endif // ! INIT_SOCKET_IN_THREAD
 
 	// Apply highly advanced scientific technology 
 	//	to accept incoming sockets and open a new thread for each
-	pthread_t tid[MAX_THREADS];
-	int session_cnt = 0;
-	while (session_cnt < MAX_THREADS)
+	pthread_t tid[MAX_THREADS+1];
+	int session_cnt = 1; // Start at 1; 0 is the port program.
+	while (session_cnt < MAX_THREADS+1)
 	{
+
+#ifdef INIT_SOCKET_IN_THREAD
+
+		struct argMainProgramThread* args = (struct argMainProgramThread*) malloc(sizeof(struct argMainProgramThread));
+		args->thread_id = session_cnt;
+
+		pthread_create(&(tid[session_cnt]), NULL, &MainProgramThread, (void*)args);
+
+		session_cnt += 1;
+
+#else
 		// Keep on trying to accept socket connections
 		// The accept() call creates a new socket descriptor with the same properties as socket and returns it to the caller. 
 		int new_socket_fd = accept(socket_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
@@ -130,7 +227,21 @@ int main()
 
 			session_cnt += 1;
 		}
+
+#endif
+
 	}
+
+#ifdef INIT_SOCKET_IN_THREAD
+
+	// Create the port thread
+	{
+		struct argPortRequestProgramThread* args = (struct argPortRequestProgramThread*) malloc(sizeof(struct argPortRequestProgramThread));
+		args->thread_id = 0;
+		pthread_create(&(tid[0]), NULL, &PortRequestProgramThread, (void*)args);
+	}
+
+#endif
 
 
 	// Join threads
@@ -143,8 +254,114 @@ int main()
 
 	pthread_mutex_destroy(&file_io_mutex);
 	pthread_mutex_destroy(&thread_readsend_mutex);
+	pthread_mutex_destroy(&create_socket_mutex);
+	pthread_mutex_destroy(&accept_socket_mutex);
+	pthread_mutex_destroy(&port_availability_mutex);
+	pthread_mutex_destroy(&port_available_wait_to_accept_mutex);
 
 	return 0;
+}
+
+/*
+	Wrapper for main program
+*/
+void* MainProgramThread(void* arg)
+{
+	// Get args
+	struct argMainProgramThread* args = (struct argMainProgramThread*) arg;
+	int thread_id = args->thread_id;
+	
+	// PORT
+	int port = PORT + thread_id;
+
+	// Lock until the socket is ready to accept
+	pthread_mutex_lock(&create_socket_mutex);
+
+	// Create the socket file descriptor
+	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+	// AF_INET -> IPV4 protocol
+	// SOCK_STREAM -> TCP
+	// Protocol -> 0 (Internet Protocol)
+	if (socket_fd == 0)
+	{
+		fprintf(stderr, "Error at line %d: Creating socket failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Set socket options
+	int opt = 1;
+	if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+	{
+		fprintf(stderr, "Error at line %d: setsockopt failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Address(?)
+	struct sockaddr_in address;
+	int addrlen = sizeof(address);
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons(port);
+
+	// Bind the socket
+	if (bind(socket_fd, (struct sockaddr*) & address, sizeof(address)) < 0)
+	{
+		fprintf(stderr, "Error at line %d: bind failure.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Begin listening.
+	if (listen(socket_fd, 3) < 0)
+	{
+		fprintf(stderr, "Error at line %d: listen failure.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Accepting
+	pthread_mutex_unlock(&create_socket_mutex);
+
+	while (1)
+	{
+		// Set this port as available
+		{
+			pthread_mutex_lock(&port_availability_mutex);
+
+			portAvailable[thread_id] = 1;
+
+			pthread_mutex_unlock(&port_availability_mutex);
+		}
+
+		int new_socket_fd = accept(socket_fd, (struct sockaddr*) & address, (socklen_t*)& addrlen);
+
+		// Set this port as unavailable
+		{
+			pthread_mutex_lock(&port_availability_mutex);
+
+			portAvailable[thread_id] = 0;
+
+			pthread_mutex_unlock(&port_availability_mutex);
+		}
+
+		// Print start
+		printf("Connected: starting session #%d.\n", thread_id);
+
+		if (new_socket_fd < 0)
+		{
+			fprintf(stderr, "Error at line %d: accept failure.\n", __LINE__);
+		}
+		else
+		{
+			MainProgramLoop(new_socket_fd);
+		}
+
+		// Print finish
+		printf("Disconnected: ending session #%d.\n", thread_id);
+	}
+
+	// Cleanup
+	free(args);
+
+	pthread_exit(NULL);
 }
 
 
@@ -176,6 +393,7 @@ void* MainProgramLoopThread(void* arg)
 
 	pthread_exit(NULL);
 }
+
 
 /*
 	Main Program Loop
@@ -623,4 +841,154 @@ int SendFile(int client_file_descripttor, char* filepath, int filesize)
 	}
 
 	return retVal;
+}
+
+
+
+
+void* PortRequestProgramThread(void* arg)
+{
+	// PORT
+	int port = PORT;
+
+	// Lock until the socket is ready to accept
+	pthread_mutex_lock(&create_socket_mutex);
+
+	// Create the socket file descriptor
+	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+	// AF_INET -> IPV4 protocol
+	// SOCK_STREAM -> TCP
+	// Protocol -> 0 (Internet Protocol)
+	if (socket_fd == 0)
+	{
+		fprintf(stderr, "Error at line %d: Creating socket failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Set socket options
+	int opt = 1;
+	if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+	{
+		fprintf(stderr, "Error at line %d: setsockopt failed.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Address
+	struct sockaddr_in address;
+	int addrlen = sizeof(address);
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons(port);
+
+	// Bind the socket
+	if (bind(socket_fd, (struct sockaddr*) & address, sizeof(address)) < 0)
+	{
+		fprintf(stderr, "Error at line %d: bind failure.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Begin listening.
+	if (listen(socket_fd, 3) < 0)
+	{
+		fprintf(stderr, "Error at line %d: listen failure.\n", __LINE__);
+		exit(EXIT_FAILURE);
+	}
+
+	// Accepting
+	pthread_mutex_unlock(&create_socket_mutex);
+
+	// Last port sent
+	int* last_port_sent = (int *)malloc(sizeof(int) * 1);
+	*last_port_sent = 0;
+
+	while (1)
+	{
+		if (verbose)
+			printf("Accepting connections in port request program....\n");
+
+		int new_socket_fd = accept(socket_fd, (struct sockaddr*) & address, (socklen_t*)& addrlen);
+
+		if (new_socket_fd < 0)
+		{
+			fprintf(stderr, "Error at line %d: accept failure.\n", __LINE__);
+		}
+		else
+		{
+			PortRequestProgram(new_socket_fd, last_port_sent);
+
+			if (verbose)
+				printf("Sucess! Distributed port!\n");
+		}
+	}
+
+	// Cleanup
+	free(last_port_sent);
+	free(arg);
+
+	pthread_exit(NULL);
+}
+
+/*
+*/
+void PortRequestProgram(int client_file_descriptor, int* last_port_sent_ptr)
+{
+	// Server reads first, then sends
+	char read_buffer[BUFFER_SIZE];
+	char send_buffer[BUFFER_SIZE];
+	memset(read_buffer, 0, BUFFER_SIZE);
+	memset(send_buffer, 0, BUFFER_SIZE);
+
+	if (read(client_file_descriptor, read_buffer, BUFFER_SIZE) < 0)
+	{
+		fprintf(stderr, "Error at line %d: file/stream read failure.\n", __LINE__);
+	}
+	else
+	{
+		if (verbose)
+			printf("Received from client: %s\n", read_buffer);
+
+		if (strstr(read_buffer, REQ_AVAILABLE_PORT))
+		{
+			if (verbose)
+				printf("Got a port request!\n");
+
+			// Get an available port
+			int available_port = 0;
+			while (available_port == 0)
+			{
+				pthread_mutex_lock(&port_availability_mutex);
+
+				for (int i = 0; i < MAX_THREADS + 1; i++)
+				{
+					if (portAvailable[i] == 1)
+					{
+						available_port = PORT + i;
+
+						// Keep track of the last PORT sent so it doesn't ever get sent twice in a row
+						if (*last_port_sent_ptr != available_port)
+						{
+							*last_port_sent_ptr = available_port;
+							break;
+						}
+					}
+				}
+
+				pthread_mutex_unlock(&port_availability_mutex);
+			}
+
+			if (verbose)
+				printf("Sending over port %d.\n", available_port);
+
+			// Send that port over
+			sprintf(send_buffer, "%s %d", RES_AVAILABLE_PORT, available_port);
+		}
+		else
+		{
+			fprintf(stderr, "ERROR: Got an invalid command when expecting a port request.\n");
+			sprintf(send_buffer, RES_UNKNOWN);
+		}
+
+		// Send response status 
+		send(client_file_descriptor, send_buffer, BUFFER_SIZE, 0);
+	}
 }

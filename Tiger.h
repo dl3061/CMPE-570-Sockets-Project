@@ -11,16 +11,20 @@
 
 // #define TEST_BINARY_READ
 // #define RESEND_ON_FALURE
+#define INIT_SOCKET_IN_THREAD
 
 #define PORT	(50416)
 #define BASE_SOCKET		(0)
 
 #define BUFFER_SIZE	(1024)
 
-#define DELAY 	for (int ___T____ = 0; ___T____ < 256; ___T____++) {}
+// Some ugly macros for delaying. Units not specified.
+// Only works if nothing else uses a variable named ___T____ within its scope.
+#define DELAY_AMOUNT	(0)
+#define DELAY 	for (int ___T____ = 0; ___T____ < DELAY_AMOUNT; ___T____++) {}
 
 // MAX_THREADS
-#define MAX_THREADS		(1000)
+#define MAX_THREADS		(100)
 
 /* COMMANDS */
 
@@ -40,6 +44,7 @@
 #define REQ_TPUT		CMD_TPUT
 #define REQ_END			CMD_END
 
+#define REQ_AVAILABLE_PORT		"gimme_available_port"
 #define REQ_READY_TO_RECEIVE	"ready_receiving_tget"
 #define REQ_ABORT_RECEIVE		"not_ready_stop_that_plz"
 
@@ -66,6 +71,8 @@
 // Kill/end client
 #define RES_ENDCLIENT	"endclient"
 #define RES_KILLCIENT	RES_ENDCLIENT
+
+#define RES_AVAILABLE_PORT		"port_available"
 
 // Ready to receive
 #define RES_READY_TO_RECEIVE	"ready_receiving_tput"
