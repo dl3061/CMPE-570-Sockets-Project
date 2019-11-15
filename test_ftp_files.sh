@@ -1,17 +1,15 @@
 #!/usr/bin/bash
 
-n=1
+n=0
 modn=1
 last=100
 while [ $n -lt $last ]
 do
 	./TigerC.exe <<< "tconnect 127.0.0.1 user pass
-tput sample$modn.txt
-tput sample.gif
-tget sample$modn.txt as sample_$n.txt 
-tget sample.gif
+tput sample$(modn).txt
+tget sample$(modn).txt
 exit
 " &
-	n=$(($n+1))
-	modn=$(($n%10))
+	n=$(($n+1)) &
+	modn=$((n % 10)) 
 done
